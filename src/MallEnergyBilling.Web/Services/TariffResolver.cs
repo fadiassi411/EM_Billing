@@ -1,0 +1,2 @@
+using MallEnergyBilling.Web.Models;namespace MallEnergyBilling.Web.Services;
+public sealed class TariffResolver{public Tariff Resolve(IEnumerable<Tariff> tariffs,int meterId,DateTimeOffset at)=>tariffs.Where(x=>x.MeterId==meterId&&x.EffectiveFrom<=at).OrderByDescending(x=>x.EffectiveFrom).FirstOrDefault()??throw new InvalidOperationException($"Meter {meterId} has no tariff effective at {at:u}.");}

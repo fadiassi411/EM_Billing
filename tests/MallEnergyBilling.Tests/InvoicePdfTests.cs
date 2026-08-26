@@ -1,0 +1,3 @@
+using MallEnergyBilling.Web.Models;using MallEnergyBilling.Web.Services;
+namespace MallEnergyBilling.Tests;
+public sealed class InvoicePdfTests{[Fact]public void GeneratesValidPdfHeader(){var invoice=new Invoice{InvoiceNumber="EM-TEST-0001",Shop=new Shop{Name="Test Shop",ShopNumber="01"},Meter=new Meter{Name="EM-001",SerialNumber="TEST"},InvoiceDate=DateTimeOffset.UtcNow,DueDate=DateTimeOffset.UtcNow.AddDays(15),OpeningReading=100,ClosingReading=110,ConsumptionKwh=10,TariffPerKwh=.22m,EnergyCharge=2.2m,Total=2.2m,Currency="USD"};var bytes=new InvoicePdfService().Generate(invoice);Assert.True(bytes.Length>10000);Assert.Equal("%PDF",System.Text.Encoding.ASCII.GetString(bytes,0,4));}}

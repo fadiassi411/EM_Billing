@@ -1,0 +1,5 @@
+@page
+@model MallEnergyBilling.Web.Pages.Admin.Audit.IndexModel
+@{ ViewData["Title"] = "Audit trail"; }
+<section class="hero compact"><div><span class="eyebrow">ADMINISTRATOR ONLY</span><h1>Audit trail</h1><p>Protected history of configuration, billing, tariff, backup, and deletion activity.</p></div><a class="button" asp-page="/Operations/Index">Back to operations</a></section>
+<section class="panel"><div class="table-responsive"><table><thead><tr><th>Timestamp</th><th>User</th><th>Action</th><th>Entity</th><th>Old value</th><th>New value</th><th>Reason</th></tr></thead><tbody>@if(Model.Entries.Count==0){<tr><td colspan="7">No audit entries recorded.</td></tr>}@foreach(var x in Model.Entries){<tr><td>@x.Timestamp.ToLocalTime().ToString("dd MMM yyyy HH:mm:ss")</td><td>@x.UserId</td><td><b>@x.Action</b></td><td>@x.EntityType @x.EntityId</td><td>@x.OldValue</td><td>@x.NewValue</td><td>@x.Reason</td></tr>}</tbody></table></div></section>

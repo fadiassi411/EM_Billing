@@ -1,0 +1,7 @@
+@page
+@model MallEnergyBilling.Web.Pages.Admin.BootstrapModel
+@{ ViewData["Title"] = "First administrator"; }
+<section class="panel narrow"><h1>First administrator setup</h1>
+@if(Model.Available){<p>No Administrator exists. The currently authenticated account can claim the initial Administrator role once.</p><form method="post"><button>Make this account Administrator</button></form>}
+else{<p>An Administrator already exists. This one-time setup is closed.</p>}
+</section>

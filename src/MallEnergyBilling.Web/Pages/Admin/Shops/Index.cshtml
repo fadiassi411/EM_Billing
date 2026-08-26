@@ -1,0 +1,28 @@
+@page
+@model MallEnergyBilling.Web.Pages.Admin.Shops.IndexModel
+@{ ViewData["Title"] = "Shop setup"; }
+<section class="hero compact"><div><span class="eyebrow">ADMINISTRATOR ONLY</span><h1>Shop setup</h1><p>Create a shop before assigning meter channels.</p></div><a class="button" asp-page="/Admin/Controllers/Index">Controller setup</a></section>
+<section class="panel admin-form">
+ <h2>Add shop</h2>
+ <form method="post">
+  <div asp-validation-summary="All" class="validation"></div>
+  <div class="form-grid">
+   <label>Shop number<input asp-for="Input.ShopNumber" placeholder="SHOP-01"/></label>
+   <label>Shop name<input asp-for="Input.Name"/></label>
+   <label>Tenant name<input asp-for="Input.TenantName"/></label>
+   <label>Floor<input asp-for="Input.Floor"/></label>
+   <label>Zone<input asp-for="Input.Zone"/></label>
+   <label>MDB panel<input asp-for="Input.MdbPanel"/></label>
+   <label>Contact person<input asp-for="Input.ContactPerson"/></label>
+   <label>Telephone<input asp-for="Input.Telephone"/></label>
+   <label>Email<input asp-for="Input.Email"/></label>
+   <label>Status<select asp-for="Input.Status" asp-items="Html.GetEnumSelectList<MallEnergyBilling.Web.Models.ShopStatus>()"></select></label>
+   <label>Billing address<input asp-for="Input.BillingAddress"/></label>
+   <label>Tax number<input asp-for="Input.TaxNumber"/></label>
+  </div>
+  <label>Notes (optional)<textarea asp-for="Input.Notes" rows="2"></textarea></label>
+  <label>Reason (optional)<textarea asp-for="Input.Reason" rows="2"></textarea></label>
+  <button type="submit">Add shop</button>
+ </form>
+</section>
+<section class="panel"><h2>Configured shops</h2><div class="table-responsive"><table><thead><tr><th>Number</th><th>Name / tenant</th><th>Location</th><th>MDB panel</th><th>Status</th></tr></thead><tbody>@if(Model.Shops.Count==0){<tr><td colspan="5">No shops configured.</td></tr>}@foreach(var shop in Model.Shops){<tr><td><b>@shop.ShopNumber</b></td><td>@shop.Name<small>@shop.TenantName</small></td><td>@shop.Floor · @shop.Zone</td><td>@shop.MdbPanel</td><td><span class="status">@shop.Status</span></td></tr>}</tbody></table></div></section>
