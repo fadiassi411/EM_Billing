@@ -3,32 +3,32 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>@ViewData["Title"] · Black Dog</title>
-    <link rel="icon" type="image/png" href="~/images/black-dog-logo-visible.png" />
+    <title>@ViewData["Title"] · Watch Dog EM</title>
+    <link rel="icon" type="image/png" href="~/images/watch-dog-logo-visible.png" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/admin.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/black-dog.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/watch-dog.css" asp-append-version="true" />
     <script>
         try {
-            if (sessionStorage.getItem("blackDogSplashSeen")) {
+            if (sessionStorage.getItem("watchDogSplashSeen")) {
                 document.documentElement.classList.add("splash-seen");
             }
         } catch { }
     </script>
 </head>
 <body>
-    <div id="startupSplash" class="startup-splash" role="status" aria-label="Black Dog is starting">
+    <div id="startupSplash" class="startup-splash" role="status" aria-label="Watch Dog EM is starting">
         <div class="startup-brand">
-            <img src="~/images/black-dog-logo-visible.png" alt="Black Dog logo" />
-            <h1>BlackDog Energy</h1>
+            <img src="~/images/watch-dog-logo-visible.png" alt="Watch Dog EM logo" />
+            <h1>Watch Dog EM</h1>
             <p>Watch Every Watt.</p>
             <small>By MicroBrain</small>
         </div>
     </div>
     <header>
         <a asp-page="/Index" class="brand">
-            <img src="~/images/black-dog-logo-visible.png" alt="Black Dog logo" />
-            <div>BLACK DOG<small>Watch Every Watt</small></div>
+            <img src="~/images/watch-dog-logo-visible.png" alt="Watch Dog EM logo" />
+            <div>WATCH DOG EM<small>Watch Every Watt</small></div>
         </a>
         <nav>
             <a asp-page="/Index">Dashboard</a>
@@ -39,7 +39,7 @@
     </header>
     <main>@RenderBody()</main>
     <footer>
-        <span>Black Dog · Watch Every Watt</span>
+        <span>Watch Dog EM · Watch Every Watt</span>
         <small class="watermark">MicroBrain by Fadi Assi</small>
         <span>System time @DateTime.Now.ToString("dd MMM yyyy HH:mm")</span>
     </footer>

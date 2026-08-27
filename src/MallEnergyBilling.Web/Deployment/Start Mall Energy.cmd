@@ -1,9 +1,9 @@
 @echo off
-title Black Dog - Watch Every Watt
+title Watch Dog EM - Watch Every Watt
 cd /d "%~dp0"
-echo Starting Black Dog...
+echo Starting Watch Dog EM...
 echo Keep this window open while using the software.
 start "" powershell.exe -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 2; Start-Process 'http://localhost:5080'"
 MallEnergyBilling.Web.exe --urls "http://localhost:5080"
-echo Black Dog has stopped.
+echo Watch Dog EM has stopped.
 pause

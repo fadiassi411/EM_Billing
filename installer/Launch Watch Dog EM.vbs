@@ -24,7 +24,7 @@ For attempt = 1 To 40
     End If
 Next
 
-MsgBox "BlackDog EM could not start. Restart Windows and try again.", 16, "BlackDog EM"
+MsgBox "Watch Dog EM could not start. Restart Windows and try again.", 16, "Watch Dog EM"
 WScript.Quit 1
 
 Function IsRunning(address)

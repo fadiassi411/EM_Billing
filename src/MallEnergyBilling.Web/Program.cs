@@ -7,11 +7,14 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 var configuredDataDirectory = builder.Configuration["Storage:DataDirectory"];
+var commonDataDirectory = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
 var dataDirectory = !string.IsNullOrWhiteSpace(configuredDataDirectory)
     ? Environment.ExpandEnvironmentVariables(configuredDataDirectory)
     : builder.Environment.IsDevelopment()
         ? builder.Environment.ContentRootPath
-        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "BlackDog EM");
+        : Path.Combine(commonDataDirectory, "Watch Dog EM");
+if (!builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(configuredDataDirectory))
+    MigratePreviousBrandData(commonDataDirectory, dataDirectory);
 Directory.CreateDirectory(dataDirectory);
 var appDataPaths = new AppDataPaths(dataDirectory);
 builder.Services.AddSingleton(appDataPaths);
@@ -59,4 +62,30 @@ using (var scope = app.Services.CreateScope())
         if (!await roles.RoleExistsAsync(role)) await roles.CreateAsync(new IdentityRole(role));
 }
 app.Run();
+
+static void MigratePreviousBrandData(string commonDataDirectory, string destinationDirectory)
+{
+    // Keep version 1.0 customer data during the Watch Dog EM rebrand.
+    var previousDirectory = Path.Combine(commonDataDirectory, string.Concat("Black", "Dog EM"));
+    var previousDatabase = Path.Combine(previousDirectory, "app.db");
+    var destinationDatabase = Path.Combine(destinationDirectory, "app.db");
+    if (!File.Exists(previousDatabase) || File.Exists(destinationDatabase)) return;
+
+    try
+    {
+        Directory.CreateDirectory(destinationDirectory);
+        foreach (var sourceFile in Directory.EnumerateFiles(previousDirectory, "*", SearchOption.AllDirectories))
+        {
+            var relativePath = Path.GetRelativePath(previousDirectory, sourceFile);
+            var destinationFile = Path.Combine(destinationDirectory, relativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationFile)!);
+            File.Copy(sourceFile, destinationFile, overwrite: false);
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Customer data migration could not be completed: {ex.Message}");
+    }
+}
+
 public partial class Program { }
