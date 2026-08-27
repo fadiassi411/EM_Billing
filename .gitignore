@@ -3,6 +3,7 @@
 **/obj/
 outputs/
 publish*/
+dist/
 
 # Runtime and customer data
 *.db

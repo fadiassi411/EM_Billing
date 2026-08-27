@@ -6,7 +6,16 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
-var cs = builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=app.db";
+var configuredDataDirectory = builder.Configuration["Storage:DataDirectory"];
+var dataDirectory = !string.IsNullOrWhiteSpace(configuredDataDirectory)
+    ? Environment.ExpandEnvironmentVariables(configuredDataDirectory)
+    : builder.Environment.IsDevelopment()
+        ? builder.Environment.ContentRootPath
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "BlackDog EM");
+Directory.CreateDirectory(dataDirectory);
+var appDataPaths = new AppDataPaths(dataDirectory);
+builder.Services.AddSingleton(appDataPaths);
+var cs = $"Data Source={appDataPaths.DatabasePath};Cache=Shared";
 builder.Services.AddDbContext<ApplicationDbContext>(o => o.UseSqlite(cs));
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 builder.Services.AddDefaultIdentity<IdentityUser>(o =>

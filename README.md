@@ -1,6 +1,16 @@
-# EM Billing
+# BlackDog EM
 
-Local web-based energy metering and shop billing system built with ASP.NET Core 8, Entity Framework Core, and SQLite.
+BlackDog Energy — Watch Every Watt. Local web-based energy metering and shop billing system by MicroBrain, built with ASP.NET Core 8, Entity Framework Core, and SQLite.
+
+## Customer installation
+
+1. Download `BlackDog-EM-Setup-1.0.0-win-x64.exe` from the GitHub release.
+2. Run the installer and approve the Windows administrator prompt.
+3. Keep the default desktop shortcut selected.
+4. Double-click **BlackDog EM**; the local service starts silently and opens the dashboard.
+5. Register the first account, sign in, then visit `/Admin/Bootstrap` once to claim Administrator access.
+
+The installer is self-contained; customers do not need to install .NET. Program files are installed under `Program Files\BlackDog EM`. The live database and backups are stored separately under `ProgramData\BlackDog EM`, and upgrades do not replace that customer data.
 
 ## Features
 
@@ -48,4 +58,4 @@ Runtime databases and backups are intentionally excluded from Git. Do not commit
 
 ## Branding
 
-MicroBrain by Fadi Assi.
+BlackDog Energy — Watch Every Watt. By MicroBrain / Fadi Assi.
