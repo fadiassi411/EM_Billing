@@ -31,9 +31,11 @@ builder.Services.ConfigureApplicationCookie(o => o.ExpireTimeSpan = TimeSpan.Fro
 builder.Services.AddRazorPages(o =>
 {
     o.Conventions.AuthorizeFolder("/Operations");
+    o.Conventions.AuthorizeFolder("/PowerSources");
     o.Conventions.AuthorizeFolder("/Admin/Controllers", "AdministratorOnly");
     o.Conventions.AuthorizeFolder("/Admin/Shops", "AdministratorOnly");
     o.Conventions.AuthorizeFolder("/Admin/Audit", "AdministratorOnly");
+    o.Conventions.AuthorizeFolder("/Admin/Users", "AdministratorOnly");
 });
 builder.Services.AddAuthorization(o => o.AddPolicy("AdministratorOnly", p => p.RequireRole("Administrator")));
 builder.Services.AddSingleton<BillingCalculator>();
@@ -42,10 +44,28 @@ builder.Services.AddSingleton<IModbusRtuService, ModbusRtuService>();
 builder.Services.AddSingleton<InvoicePdfService>();
 builder.Services.AddSingleton<DatabaseMaintenanceService>();
 builder.Services.AddHostedService<MeterPollingService>();
+builder.Services.AddHostedService<AutomaticBackupService>();
 
 var app = builder.Build();
 if (!app.Environment.IsDevelopment()) { app.UseExceptionHandler("/Error"); app.UseHsts(); }
-app.UseHttpsRedirection(); app.UseStaticFiles(); app.UseRouting(); app.UseAuthentication(); app.UseAuthorization(); app.MapRazorPages();
+app.UseHttpsRedirection(); app.UseStaticFiles(); app.UseRouting(); app.UseAuthentication(); app.UseAuthorization();
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/Identity/Account/Register"))
+    {
+        using var scope = context.RequestServices.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+        if ((await users.GetUsersInRoleAsync("Administrator")).Any())
+        {
+            context.Response.Redirect(context.User.IsInRole("Administrator")
+                ? "/Admin/Users"
+                : "/Identity/Account/Login");
+            return;
+        }
+    }
+    await next();
+});
+app.MapRazorPages();
 using (var scope = app.Services.CreateScope())
 {
     var database = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();

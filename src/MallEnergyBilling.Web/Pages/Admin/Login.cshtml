@@ -1,0 +1,25 @@
+@page
+@model MallEnergyBilling.Web.Pages.Admin.LoginModel
+@{ ViewData["Title"] = "Administrator login"; }
+
+<section class="hero compact">
+    <div>
+        <span class="eyebrow">SECURE ACCESS</span>
+        <h1>Administrator login</h1>
+        <p>Enter an Administrator account to switch this session to Administrator level.</p>
+    </div>
+</section>
+
+<section class="panel admin-form" style="max-width:720px;margin-inline:auto">
+    <h2>Switch to Administrator</h2>
+    <form method="post">
+        <div asp-validation-summary="All" class="validation"></div>
+        <input asp-for="ReturnUrl" type="hidden" />
+        <div class="form-grid">
+            <label>Administrator username<input asp-for="Input.Username" autocomplete="username" /></label>
+            <label>Password<input asp-for="Input.Password" autocomplete="current-password" /></label>
+        </div>
+        <button type="submit">Enter Administrator level</button>
+    </form>
+    <p class="note">This replaces the current signed-in session with the selected Administrator account. Bootstrap is only used once when a new installation has no Administrator.</p>
+</section>

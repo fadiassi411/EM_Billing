@@ -1,0 +1,24 @@
+@page
+@model MallEnergyBilling.Web.Areas.Identity.Pages.Account.LoginModel
+@{ ViewData["Title"] = "Login"; }
+
+<section class="hero compact">
+    <div>
+        <span class="eyebrow">SECURE ACCESS</span>
+        <h1>User login</h1>
+        <p>Enter the username and password provided by the Administrator.</p>
+    </div>
+</section>
+
+<section class="panel admin-form" style="max-width:720px;margin-inline:auto">
+    <h2>Sign in</h2>
+    <form method="post" asp-route-returnUrl="@Model.ReturnUrl">
+        <div asp-validation-summary="All" class="validation"></div>
+        <div class="form-grid">
+            <label>Username<input asp-for="Input.Username" autocomplete="username" autofocus /></label>
+            <label>Password<input asp-for="Input.Password" autocomplete="current-password" /></label>
+        </div>
+        <label><input asp-for="Input.RememberMe" /> Remember me on this computer</label>
+        <button type="submit">Login</button>
+    </form>
+</section>

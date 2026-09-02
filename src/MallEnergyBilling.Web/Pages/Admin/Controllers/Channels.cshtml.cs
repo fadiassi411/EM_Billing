@@ -14,21 +14,22 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
     public List<Shop> Shops { get; private set; } = [];
     [BindProperty, Range(0, 65535)] public int FirstRegister { get; set; } = 4196;
     [BindProperty, Range(1, 100)] public int RegisterStride { get; set; } = 2;
-    [BindProperty, Range(1, 36)] public int ChannelCount { get; set; } = 36;
+    [BindProperty, Range(1, 45)] public int ChannelCount { get; set; } = 45;
     [BindProperty] public RegisterDataType DataType { get; set; } = RegisterDataType.UInt32;
     [BindProperty] public WordOrder WordOrder { get; set; } = WordOrder.LowHigh;
+    [BindProperty] public PowerSource PowerSource { get; set; } = PowerSource.UMEME;
     [BindProperty, Range(typeof(decimal), "0.00000001", "1000000")] public decimal ScalingFactor { get; set; } = .01m;
     [BindProperty, Range(1, int.MaxValue)] public int ShopId { get; set; }
     [BindProperty, StringLength(40)] public string MeterNamePrefix { get; set; } = "Meter";
     [BindProperty, StringLength(100)] public string FirstMeterSerial { get; set; } = "";
     [BindProperty, StringLength(300)] public string Reason { get; set; } = "";
 
-    public async Task<IActionResult> OnGetAsync(int id) { if (!await Load(id)) return NotFound(); ShopId = Shops.FirstOrDefault()?.Id ?? 0; ChannelCount = Math.Max(1, 36 - Meters.Count); return Page(); }
+    public async Task<IActionResult> OnGetAsync(int id) { if (!await Load(id)) return NotFound(); ShopId = Shops.FirstOrDefault()?.Id ?? 0; ChannelCount = Math.Max(1, 45 - Meters.Count); return Page(); }
     public async Task<IActionResult> OnPostGenerateAsync(int id)
     {
         if (!await Load(id)) return NotFound();
         if (!await db.Shops.AnyAsync(x => x.Id == ShopId)) ModelState.AddModelError(nameof(ShopId), "Select a temporary or final shop assignment.");
-        if (Meters.Count + ChannelCount > 36) ModelState.AddModelError(nameof(ChannelCount), $"This controller already has {Meters.Count} channels; maximum is 36.");
+        if (Meters.Count + ChannelCount > 45) ModelState.AddModelError(nameof(ChannelCount), $"This controller already has {Meters.Count} channels; maximum is 45.");
         var lastRegister = FirstRegister + (ChannelCount - 1) * RegisterStride;
         if (lastRegister > 65535) ModelState.AddModelError(nameof(FirstRegister), "The generated register range exceeds 65535.");
         if (!ModelState.IsValid) return Page();
@@ -43,9 +44,9 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
         {
             var channel = startChannel + i;
             var serial = i == 0 && !string.IsNullOrWhiteSpace(FirstMeterSerial) ? FirstMeterSerial.Trim() : $"PENDING-{Controller.Id}-{channel:00}-{Guid.NewGuid():N}";
-            db.Meters.Add(new Meter { ControllerId=id, ShopId=ShopId, Name=$"{(string.IsNullOrWhiteSpace(MeterNamePrefix)?"Meter":MeterNamePrefix.Trim())}-{channel:00}", SerialNumber=serial, StartingRegister=FirstRegister+i*RegisterStride, DataType=DataType, WordOrder=WordOrder, ScalingFactor=ScalingFactor, PulseConstant=1600, Active=false, CommunicationStatus="Not commissioned", Notes="Generated channel; replace pending serial number before activation." });
+            db.Meters.Add(new Meter { ControllerId=id, ShopId=ShopId, Name=$"{(string.IsNullOrWhiteSpace(MeterNamePrefix)?"Meter":MeterNamePrefix.Trim())}-{channel:00}", SerialNumber=serial, PowerSource=PowerSource, StartingRegister=FirstRegister+i*RegisterStride, DataType=DataType, WordOrder=WordOrder, ScalingFactor=ScalingFactor, PulseConstant=1600, Active=false, CommunicationStatus="Not commissioned", Notes="Generated channel; replace pending serial number before activation." });
         }
-        db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=User.Identity?.Name??"Administrator",Action="Controller channels generated",EntityType="Controller",EntityId=id.ToString(),NewValue=$"{ChannelCount} channels; first register {FirstRegister}; stride {RegisterStride}; {DataType}; scale {ScalingFactor}",Reason=string.IsNullOrWhiteSpace(Reason)?"Not provided":Reason.Trim(),SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});
+        db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=User.Identity?.Name??"Administrator",Action="Controller channels generated",EntityType="Controller",EntityId=id.ToString(),NewValue=$"{ChannelCount} channels; source {PowerSource}; first register {FirstRegister}; stride {RegisterStride}; {DataType}; scale {ScalingFactor}",Reason=string.IsNullOrWhiteSpace(Reason)?"Not provided":Reason.Trim(),SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});
         await db.SaveChangesAsync(); return RedirectToPage(new { id });
     }
     public async Task<IActionResult> OnPostDeleteAsync(int id, int meterId)

@@ -15,7 +15,7 @@ The installer is self-contained; customers do not need to install .NET. Program 
 ## Features
 
 - Physical Modbus RTU communication over Windows serial ports
-- Multiple controllers with up to 36 meter channels per controller
+- Multiple controllers with up to 45 meter channels per controller
 - Configurable register address, data type, word order, and scaling per meter
 - Live dashboard with automatic refresh and communication status
 - Independent tariff and ISO currency selection for every meter

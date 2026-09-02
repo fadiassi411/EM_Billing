@@ -1,0 +1,36 @@
+@model MallEnergyBilling.Web.Pages.PowerSources.PowerSourceMetersPageModel
+<section class="hero compact source-hero">
+    <div>
+        <span class="eyebrow">POWER SOURCE</span>
+        <h1>@Model.Title</h1>
+        <p>@Model.Description</p>
+    </div>
+    <span class="source-badge">@Model.Meters.Count meter@(Model.Meters.Count == 1 ? "" : "s")</span>
+</section>
+
+<section class="meter-search-banner" aria-labelledby="meter-search-title">
+    <div class="search-banner-copy">
+        <span class="search-power-icon" aria-hidden="true">
+            @if(Model.Source == MallEnergyBilling.Web.Models.PowerSource.UMEME){<svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>}
+            else{<svg viewBox="0 0 24 24"><path d="M12 2v8m0 4v8M4.9 4.9l5.7 5.7m2.8 2.8 5.7 5.7M2 12h8m4 0h8M4.9 19.1l5.7-5.7m2.8-2.8 5.7-5.7"/></svg>}
+        </span>
+        <div><h2 id="meter-search-title">Find a @Model.Title meter</h2><p>Search by meter number, ID, name, customer, tenant, shop, room, or location.</p></div>
+    </div>
+    <form method="get" class="meter-search-form" role="search">
+        <label class="sr-only" for="meter-search">Search meters</label>
+        <input id="meter-search" type="search" name="q" value="@Model.Search" placeholder="Enter meter, customer, shop, room, or location" autocomplete="off" />
+        <button type="submit">Search</button>
+        @if(!string.IsNullOrWhiteSpace(Model.Search)){<a class="button search-clear" asp-page="@Model.PagePath">Clear</a>}
+    </form>
+</section>
+
+<section class="panel source-meter-panel">
+    <div class="panel-title"><h2>@Model.Title meter register</h2>@if(!string.IsNullOrWhiteSpace(Model.Search)){<span>Results for “@Model.Search”</span>}</div>
+    @if(Model.Meters.Count == 0){
+        <div class="meter-empty-state"><span aria-hidden="true">⌁</span><strong>No matching meter was found.</strong><p>Try another meter number, customer, shop, room, or location.</p></div>
+    }else{
+        <div class="table-responsive"><table><thead><tr><th>Meter</th><th>Customer / tenant</th><th>Shop / location</th><th>Controller</th><th>Reading</th><th>Communication</th></tr></thead><tbody>
+        @foreach(var meter in Model.Meters){<tr><td><b>@meter.Name</b><small>ID @meter.Id · @meter.SerialNumber</small></td><td>@(string.IsNullOrWhiteSpace(meter.Shop?.TenantName)?"—":meter.Shop.TenantName)<small>@meter.Shop?.ContactPerson</small></td><td><b>@meter.Shop?.ShopNumber · @meter.Shop?.Name</b><small>@meter.Shop?.Floor · @meter.Shop?.Zone</small></td><td>@meter.Controller?.Name<small>@meter.Controller?.MdbPanel</small></td><td><b>@meter.LastReading.ToString("N3") kWh</b><small>@(meter.LastReadingAt?.ToLocalTime().ToString("g")??"No recent reading")</small></td><td><span class="status @meter.CommunicationStatus.ToLowerInvariant().Replace(" ","-")">@meter.CommunicationStatus</span></td></tr>}
+        </tbody></table></div>
+    }
+</section>

@@ -1,40 +1,66 @@
-using MallEnergyBilling.Web.Data;using MallEnergyBilling.Web.Models;using Microsoft.EntityFrameworkCore;
+using MallEnergyBilling.Web.Data;
+using MallEnergyBilling.Web.Models;
+using Microsoft.EntityFrameworkCore;
+
 namespace MallEnergyBilling.Web.Services;
-public sealed class MeterPollingService(IServiceScopeFactory scopes,IModbusRtuService modbus,DatabaseMaintenanceService maintenance,ILogger<MeterPollingService> log):BackgroundService
+
+public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusRtuService modbus, DatabaseMaintenanceService maintenance, ILogger<MeterPollingService> log) : BackgroundService
 {
- protected override async Task ExecuteAsync(CancellationToken ct)
- {
-  while(!ct.IsCancellationRequested)
-  {
-   try
-   {
-    await maintenance.Gate.WaitAsync(ct);
-    try
+    readonly Dictionary<int, DateTimeOffset> nextPoll = [];
+    protected override async Task ExecuteAsync(CancellationToken ct)
     {
-    using var scope=scopes.CreateScope();var db=scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();var meters=await db.Meters.Include(x=>x.Controller).Where(x=>x.Active&&x.Controller!.Enabled).ToListAsync(ct);
-    foreach(var m in meters)
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                List<int> due;
+                await maintenance.Gate.WaitAsync(ct);
+                try
+                {
+                    using var scope = scopes.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(); var now = DateTimeOffset.UtcNow;
+                    due = await db.Controllers.Where(x => x.Enabled && x.CommunicationType == "ModbusRtu" && db.Meters.Any(m => m.ControllerId == x.Id && m.Active)).Select(x => x.Id).ToListAsync(ct);
+                    due = due.Where(id => !nextPoll.TryGetValue(id, out var at) || at <= now).ToList();
+                }
+                finally { maintenance.Gate.Release(); }
+                foreach (var id in due) await PollController(id, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+            catch (Exception ex) { log.LogError(ex, "Polling cycle failed; retrying"); }
+            await Task.Delay(TimeSpan.FromSeconds(1), ct);
+        }
+    }
+
+    async Task PollController(int controllerId, CancellationToken ct)
     {
-     if(m.Controller!.CommunicationType=="ModbusRtu")await UpdateRtu(db,m,ct);
-     await SaveHistoryIfDue(db,m,ct);
+        using var scope = scopes.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Controller? controller; List<Meter> meters;
+        await maintenance.Gate.WaitAsync(ct);
+        try { controller = await db.Controllers.FirstOrDefaultAsync(x => x.Id == controllerId, ct); meters = await db.Meters.Where(x => x.ControllerId == controllerId && x.Active).OrderBy(x => x.StartingRegister).ToListAsync(ct); }
+        finally { maintenance.Gate.Release(); }
+        if (controller is null) return;
+        nextPoll[controllerId] = DateTimeOffset.UtcNow.AddSeconds(Math.Max(1, controller.PollingIntervalSeconds));
+        var transportFailed = false;
+        foreach (var meter in meters)
+        {
+            if (transportFailed) { meter.CommunicationStatus = "Failed"; continue; }
+            try
+            {
+                var count = ModbusValueConverter.RegisterCount(meter.DataType); var result = await modbus.ReadHoldingRegistersAsync(controller, meter.StartingRegister, count, ct); var value = ModbusValueConverter.ConvertValue(result.Registers, meter.DataType, meter.WordOrder, meter.ScalingFactor);
+                if (value < meter.LastReading && meter.LastReadingAt is not null) db.MeterReadings.Add(new() { MeterId = meter.Id, RawValue = (ulong)Math.Max(0, value / meter.ScalingFactor), AccumulatedKwh = value, Timestamp = DateTimeOffset.UtcNow, Source = ReadingSource.Automatic, Quality = "Review: lower than previous", RequiresReview = true });
+                meter.LastReading = value; meter.LastReadingAt = DateTimeOffset.UtcNow; meter.CommunicationStatus = "Connected"; controller.LastSuccess = DateTimeOffset.UtcNow; controller.Condition = "Connected"; controller.Notes = $"Last RTU request {result.RequestHex}; response {result.ResponseHex}";
+                await SaveHistoryIfDue(db, meter, ct);
+            }
+            catch (Exception ex) { meter.CommunicationStatus = "Failed"; controller.Condition = "Failed"; controller.Notes = ex.Message; transportFailed = true; log.LogWarning(ex, "RTU read failed for controller {Controller} on {Port}; remaining channels skipped until next poll", controller.Name, controller.ComPort); }
+        }
+        await maintenance.Gate.WaitAsync(ct);
+        try { await db.SaveChangesAsync(ct); }
+        finally { maintenance.Gate.Release(); }
     }
-    await db.SaveChangesAsync(ct);
+
+    static async Task SaveHistoryIfDue(ApplicationDbContext db, Meter meter, CancellationToken ct)
+    {
+        if (meter.LastReadingAt is null || meter.CommunicationStatus != "Connected") return;
+        var last = await db.MeterReadings.Where(x => x.MeterId == meter.Id).OrderByDescending(x => x.Id).FirstOrDefaultAsync(ct);
+        if (last is null || DateTimeOffset.UtcNow - last.Timestamp >= TimeSpan.FromMinutes(15)) db.MeterReadings.Add(new() { MeterId = meter.Id, RawValue = (ulong)Math.Max(0, meter.LastReading / meter.ScalingFactor), AccumulatedKwh = meter.LastReading, Timestamp = DateTimeOffset.UtcNow, Source = ReadingSource.Automatic, Quality = "Good" });
     }
-    finally{maintenance.Gate.Release();}
-   }
-   catch(OperationCanceledException)when(ct.IsCancellationRequested){}
-   catch(Exception ex){log.LogError(ex,"Polling cycle failed; retrying");}
-   await Task.Delay(TimeSpan.FromSeconds(5),ct);
-  }
- }
- async Task UpdateRtu(ApplicationDbContext db,Meter m,CancellationToken ct)
- {
-  try
-  {
-   var count=ModbusValueConverter.RegisterCount(m.DataType);var result=await modbus.ReadHoldingRegistersAsync(m.Controller!,m.StartingRegister,count,ct);var value=ModbusValueConverter.ConvertValue(result.Registers,m.DataType,m.WordOrder,m.ScalingFactor);
-   if(value<m.LastReading&&m.LastReadingAt is not null)db.MeterReadings.Add(new(){MeterId=m.Id,RawValue=(ulong)Math.Max(0,value/m.ScalingFactor),AccumulatedKwh=value,Timestamp=DateTimeOffset.UtcNow,Source=ReadingSource.Automatic,Quality="Review: lower than previous",RequiresReview=true});
-   m.LastReading=value;m.LastReadingAt=DateTimeOffset.UtcNow;m.CommunicationStatus="Connected";m.Controller!.LastSuccess=DateTimeOffset.UtcNow;m.Controller.Condition="Connected";m.Controller.Notes=$"Last RTU request {result.RequestHex}; response {result.ResponseHex}";
-  }
-  catch(Exception ex){m.CommunicationStatus="Failed";m.Controller!.Condition="Failed";m.Controller.Notes=ex.Message;log.LogWarning(ex,"RTU read failed for meter {Meter} on {Port}",m.Name,m.Controller.ComPort);}
- }
- static async Task SaveHistoryIfDue(ApplicationDbContext db,Meter m,CancellationToken ct){if(m.LastReadingAt is null||m.CommunicationStatus!="Connected")return;var last=await db.MeterReadings.Where(x=>x.MeterId==m.Id).OrderByDescending(x=>x.Id).FirstOrDefaultAsync(ct);if(last is null||DateTimeOffset.UtcNow-last.Timestamp>=TimeSpan.FromMinutes(15))db.MeterReadings.Add(new(){MeterId=m.Id,RawValue=(ulong)Math.Max(0,m.LastReading/m.ScalingFactor),AccumulatedKwh=m.LastReading,Timestamp=DateTimeOffset.UtcNow,Source=ReadingSource.Automatic,Quality="Good"});}
 }

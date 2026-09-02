@@ -1,6 +1,41 @@
-using MallEnergyBilling.Web.Data;using MallEnergyBilling.Web.Models;using Microsoft.AspNetCore.Mvc;using Microsoft.AspNetCore.Mvc.RazorPages;using Microsoft.EntityFrameworkCore;namespace MallEnergyBilling.Web.Pages;
-public class IndexModel(ApplicationDbContext db):PageModel
+using MallEnergyBilling.Web.Data;
+using MallEnergyBilling.Web.Models;
+using MallEnergyBilling.Web.Services;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
+
+namespace MallEnergyBilling.Web.Pages;
+
+public class IndexModel(ApplicationDbContext db) : PageModel
 {
- public List<Meter>Meters{get;set;}=[];public List<Invoice>Invoices{get;set;}=[];public List<Tariff>CurrentTariffs{get;set;}=[];public int Shops{get;set;}public string TariffSummary{get;set;}="No meter tariffs";public string OutstandingSummary{get;set;}="No unpaid invoices";public string CollectionRateSummary{get;set;}="No invoices";public DateTimeOffset? LatestTariffChange{get;set;}
- public async Task OnGet(){Meters=await db.Meters.Include(x=>x.Shop).Include(x=>x.Controller).ToListAsync();var all=(await db.Tariffs.Include(x=>x.Meter).ToListAsync()).Where(x=>x.MeterId!=null&&x.EffectiveFrom<=DateTimeOffset.UtcNow);CurrentTariffs=all.GroupBy(x=>x.MeterId).Select(g=>g.OrderByDescending(x=>x.EffectiveFrom).First()).ToList();if(CurrentTariffs.Count>0){TariffSummary=string.Join(" · ",CurrentTariffs.GroupBy(x=>x.Currency).OrderBy(x=>x.Key).Select(g=>{var min=g.Min(x=>x.PricePerKwh);var max=g.Max(x=>x.PricePerKwh);return min==max?$"{g.Key} {min:0.0000} / kWh":$"{g.Key} {min:0.0000} - {max:0.0000} / kWh";}));LatestTariffChange=CurrentTariffs.Max(x=>x.CreatedAt);}Invoices=await db.Invoices.Include(x=>x.Shop).Include(x=>x.Payments).ToListAsync();var balances=Invoices.GroupBy(x=>x.Currency).Select(g=>new{Currency=g.Key,Balance=g.Sum(x=>x.Balance)}).Where(x=>x.Balance!=0).OrderBy(x=>x.Currency).ToList();if(balances.Count>0)OutstandingSummary=string.Join(" · ",balances.Select(x=>$"{x.Currency} {x.Balance:N2}"));var rates=Invoices.GroupBy(x=>x.Currency).Select(g=>new{Currency=g.Key,Total=g.Sum(x=>x.Total),Paid=g.Sum(x=>x.PaidAmount)}).Where(x=>x.Total!=0).OrderBy(x=>x.Currency).ToList();if(rates.Count>0)CollectionRateSummary=string.Join(" · ",rates.Select(x=>$"{x.Currency} {(x.Paid/x.Total)*100:N1}%"));Shops=await db.Shops.CountAsync();}
+    public List<Meter> Meters { get; set; } = [];
+    public List<Invoice> Invoices { get; set; } = [];
+    public List<Tariff> CurrentTariffs { get; set; } = [];
+    public int Shops { get; set; }
+    public string TariffSummary { get; set; } = "No meter tariffs";
+    public string OutstandingSummary { get; set; } = "No unpaid invoices";
+    public string CollectionRateSummary { get; set; } = "No invoices";
+    public DateTimeOffset? LatestTariffChange { get; set; }
+
+    public async Task OnGet()
+    {
+        Meters = await db.Meters.Include(x => x.Shop).Include(x => x.Controller).ToListAsync();
+        var all = (await db.Tariffs.Include(x => x.Meter).ToListAsync()).Where(x => x.MeterId != null && x.EffectiveFrom <= DateTimeOffset.UtcNow);
+        CurrentTariffs = all.GroupBy(x => x.MeterId).Select(g => g.OrderByDescending(x => x.EffectiveFrom).First()).ToList();
+        if (CurrentTariffs.Count > 0)
+        {
+            TariffSummary = string.Join(" · ", CurrentTariffs.GroupBy(x => x.Currency).OrderBy(x => x.Key).Select(g =>
+            {
+                var min = g.Min(x => x.PricePerKwh); var max = g.Max(x => x.PricePerKwh);
+                return min == max ? $"{g.Key} {min:0.0000} / kWh" : $"{g.Key} {min:0.0000} - {max:0.0000} / kWh";
+            }));
+            LatestTariffChange = CurrentTariffs.Max(x => x.CreatedAt);
+        }
+        Invoices = await db.Invoices.Include(x => x.Shop).Include(x => x.Payments).ToListAsync();
+        var balances = Invoices.GroupBy(x => x.Currency).Select(g => new { Currency = g.Key, Balance = AccountBalanceService.Outstanding(g) }).Where(x => x.Balance != 0).OrderBy(x => x.Currency).ToList();
+        if (balances.Count > 0) OutstandingSummary = string.Join(" · ", balances.Select(x => $"{x.Currency} {x.Balance:N2}"));
+        var rates = Invoices.Where(x => x.Status != InvoiceStatus.Cancelled).GroupBy(x => x.Currency).Select(g => new { Currency = g.Key, Total = g.Sum(AccountBalanceService.Charges), Paid = g.Sum(x => x.PaidAmount) }).Where(x => x.Total != 0).OrderBy(x => x.Currency).ToList();
+        if (rates.Count > 0) CollectionRateSummary = string.Join(" · ", rates.Select(x => $"{x.Currency} {(x.Paid / x.Total) * 100:N1}%"));
+        Shops = await db.Shops.CountAsync();
+    }
 }

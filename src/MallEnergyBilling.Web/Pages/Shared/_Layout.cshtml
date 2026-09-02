@@ -32,8 +32,13 @@
         </a>
         <nav>
             <a asp-page="/Index">Dashboard</a>
-            @if (User.Identity?.IsAuthenticated == true) { <a asp-page="/Operations/Index">Operations</a> }
-            @if (User.IsInRole("Administrator")) { <a asp-page="/Admin/Shops/Index">Shops</a><a asp-page="/Admin/Controllers/Index">Controller setup</a><a asp-page="/Admin/Audit/Index">Audit trail</a> }
+            @if (User.Identity?.IsAuthenticated == true) {
+                <a class="power-nav-link" asp-page="/PowerSources/UMEME"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>UMEME</a>
+                <a class="power-nav-link" asp-page="/PowerSources/Generator"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v6m0 6v6M5.6 5.6l4.2 4.2m4.4 4.4 4.2 4.2M3 12h6m6 0h6M5.6 18.4l4.2-4.2m4.4-4.4 4.2-4.2"/></svg>Generator</a>
+                <a asp-page="/Operations/Index">Operations</a>
+            }
+            @if (User.IsInRole("Administrator")) { <a asp-page="/Admin/Shops/Index">Shops</a><a asp-page="/Admin/Controllers/Index">Controller setup</a><a asp-page="/Admin/Users/Index">Users &amp; Access</a><a asp-page="/Admin/Audit/Index">Audit trail</a> }
+            else { <a asp-page="/Admin/Login">Administrator login</a> }
             <partial name="_LoginPartial" />
         </nav>
     </header>

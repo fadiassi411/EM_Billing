@@ -29,7 +29,7 @@ public sealed class InvoicePdfService
     {
         var teal = Color.Parse("#0C8C84"); var navy = Color.Parse("#0C2637"); var pale = Color.Parse("#EAF5F4"); var gray = Color.Parse("#667781");
         var d = new Document(); d.Info.Title = $"Watch Dog EM Invoice {i.InvoiceNumber}"; d.Info.Author = "Watch Dog EM";
-        var normal = d.Styles[StyleNames.Normal]; normal.Font.Name = "Arial"; normal.Font.Size = 9; normal.Font.Color = navy;
+        var normal = d.Styles[StyleNames.Normal] ?? throw new InvalidOperationException("The PDF normal style is unavailable."); normal.Font.Name = "Arial"; normal.Font.Size = 9; normal.Font.Color = navy;
         var s = d.AddSection(); s.PageSetup.PageFormat = PageFormat.A4; s.PageSetup.TopMargin = Unit.FromMillimeter(16); s.PageSetup.BottomMargin = Unit.FromMillimeter(18); s.PageSetup.LeftMargin = Unit.FromMillimeter(17); s.PageSetup.RightMargin = Unit.FromMillimeter(17);
         var footer = s.Footers.Primary.AddTable(); footer.AddColumn(Unit.FromMillimeter(115)); footer.AddColumn(Unit.FromMillimeter(45)); var fr=footer.AddRow();fr.Cells[0].AddParagraph("Watch Dog EM  |  Watch Every Watt").Format.Font.Color=gray;var fp=fr.Cells[1].AddParagraph();fp.Format.Alignment=ParagraphAlignment.Right;fp.AddText("Page ");fp.AddPageField();fp.AddText(" of ");fp.AddNumPagesField();
 
