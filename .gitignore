@@ -23,6 +23,7 @@ TestResults/
 *.log
 *.inspect.ndjson
 document-build/
+doc-build-commissioning/
 presentation-build/
 
 # Operating system files

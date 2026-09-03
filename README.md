@@ -4,11 +4,11 @@ Watch Dog EM — Watch Every Watt. Local web-based energy metering and shop bill
 
 ## Customer installation
 
-1. Download `Watch-Dog-EM-Setup-1.1.0-win-x64.exe` from the GitHub release.
+1. Download `Watch-Dog-EM-Setup-1.3.0-win-x64.exe` from the latest GitHub release.
 2. Run the installer and approve the Windows administrator prompt.
 3. Keep the default desktop shortcut selected.
 4. Double-click **Watch Dog EM**; the local service starts silently and opens the dashboard.
-5. Register the first account, sign in, then visit `/Admin/Bootstrap` once to claim Administrator access.
+5. Sign in with the Administrator username and password created during initial setup.
 
 The installer is self-contained; customers do not need to install .NET. Program files are installed under `Program Files\Watch Dog EM`. The live database and backups are stored separately under `ProgramData\Watch Dog EM`, and upgrades do not replace that customer data. Existing version 1.0 customer data is migrated automatically on first start.
 
@@ -19,6 +19,7 @@ The installer is self-contained; customers do not need to install .NET. Program 
 - Configurable register address, data type, word order, and scaling per meter
 - Live dashboard with automatic refresh and communication status
 - Independent tariff and ISO currency selection for every meter
+- Simple automatic monthly invoice scheduling by date and time
 - Shop management and meter commissioning
 - Monthly billing data, invoice history, and professional PDF invoices
 - Administrator-only controller configuration and audit history
@@ -39,7 +40,7 @@ dotnet restore src/MallEnergyBilling.Web/MallEnergyBilling.Web.csproj
 dotnet run --project src/MallEnergyBilling.Web --urls http://localhost:5080
 ```
 
-Open `http://localhost:5080`. Register the first account, sign in, then visit `/Admin/Bootstrap` once to claim Administrator access.
+Open `http://localhost:5080` and sign in with an Administrator account to configure controllers, meters, users, tariffs, and billing.
 
 ## Build and test
 

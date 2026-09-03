@@ -45,6 +45,7 @@ builder.Services.AddSingleton<InvoicePdfService>();
 builder.Services.AddSingleton<DatabaseMaintenanceService>();
 builder.Services.AddHostedService<MeterPollingService>();
 builder.Services.AddHostedService<AutomaticBackupService>();
+builder.Services.AddHostedService<InvoiceSchedulerService>();
 
 var app = builder.Build();
 if (!app.Environment.IsDevelopment()) { app.UseExceptionHandler("/Error"); app.UseHsts(); }
