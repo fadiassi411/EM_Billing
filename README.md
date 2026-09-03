@@ -4,7 +4,7 @@ Watch Dog EM — Watch Every Watt. Local web-based energy metering and shop bill
 
 ## Customer installation
 
-1. Download `Watch-Dog-EM-Setup-1.3.0-win-x64.exe` from the latest GitHub release.
+1. Download the Watch Dog EM v1.4.0 Windows package from the latest GitHub release.
 2. Run the installer and approve the Windows administrator prompt.
 3. Keep the default desktop shortcut selected.
 4. Double-click **Watch Dog EM**; the local service starts silently and opens the dashboard.
@@ -19,7 +19,10 @@ The installer is self-contained; customers do not need to install .NET. Program 
 - Configurable register address, data type, word order, and scaling per meter
 - Live dashboard with automatic refresh and communication status
 - Independent tariff and ISO currency selection for every meter
-- Simple automatic monthly invoice scheduling by date and time
+- One-form tariff and monthly invoice publication settings
+- Recurring invoice publication on a selectable day from the 1st through the 7th
+- Searchable published-invoice archive by date, shop, tenant, meter, or invoice number
+- Collapsible meter register and simplified Main/Settings navigation
 - Shop management and meter commissioning
 - Monthly billing data, invoice history, and professional PDF invoices
 - Administrator-only controller configuration and audit history

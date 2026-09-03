@@ -31,7 +31,10 @@ public sealed class InvoiceSchedulerService(IServiceScopeFactory scopes, ILogger
             var periodEnd = new DateOnly(localRun.Year, localRun.Month, 1).AddDays(-1);
             var periodStart = new DateOnly(periodEnd.Year, periodEnd.Month, 1);
             var outcome = await Generate(db, calculator, resolver, periodStart, periodEnd, invoiceDate, invoiceDate.AddDays(schedule.DueDays), schedule.CreatedBy, token);
-            schedule.Completed = true; schedule.CompletedAt = DateTimeOffset.Now; schedule.Result = outcome;
+            schedule.CompletedAt = DateTimeOffset.Now; schedule.Result = outcome;
+            var nextMonth = new DateOnly(localRun.Year, localRun.Month, 1).AddMonths(1);
+            var nextLocal = nextMonth.AddDays(schedule.PublicationDay - 1).ToDateTime(new TimeOnly(0, 5));
+            schedule.GenerateAt = new DateTimeOffset(nextLocal, TimeZoneInfo.Local.GetUtcOffset(nextLocal));
             db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=schedule.CreatedBy,Action="Scheduled invoice run completed",EntityType="InvoiceSchedule",EntityId=schedule.Id.ToString(),NewValue=outcome,Reason="Automatic monthly billing",SourceIp="Background service"});
             await db.SaveChangesAsync(token);
         }
@@ -58,14 +61,14 @@ public sealed class InvoiceSchedulerService(IServiceScopeFactory scopes, ILogger
             catch(InvalidOperationException ex){errors.Add($"{meter.Name}: {ex.Message}");}
         }
         if(errors.Count>0) return "No invoices created: " + string.Join("; ", errors);
-        var period=new BillingPeriod{Number=$"BP-{startDate:yyyyMM}",StartDate=startDate,EndDate=endDate,Status=BillingStatus.Calculated,CreatedAt=DateTimeOffset.UtcNow,ResponsibleUser=user};
+        var period=new BillingPeriod{Number=$"BP-{startDate:yyyyMM}",StartDate=startDate,EndDate=endDate,Status=BillingStatus.Finalized,CreatedAt=DateTimeOffset.UtcNow,FinalizedAt=DateTimeOffset.UtcNow,ResponsibleUser=user};
         db.BillingPeriods.Add(period); await db.SaveChangesAsync(token);
         var next=(await db.Invoices.Select(x=>(int?)x.Id).MaxAsync(token)??0)+1;
         foreach(var item in items)
         {
             item.closing.UsedForBilling=true;if(item.opening is not null)item.opening.UsedForBilling=true;
-            db.Invoices.Add(new(){InvoiceNumber=$"INV-{next++:000000}",BillingPeriodId=period.Id,MeterId=item.meter.Id,ShopId=item.meter.ShopId,InvoiceDate=issued,DueDate=due,OpeningReading=item.opening?.AccumulatedKwh??item.meter.InitialReading,ClosingReading=item.closing.AccumulatedKwh,ConsumptionKwh=item.result.Consumption,TariffPerKwh=item.tariff.PricePerKwh,EnergyCharge=item.result.EnergyCharge,PreviousBalance=item.previous,Total=item.result.Total,Currency=item.tariff.Currency,Status=InvoiceStatus.Draft,Locked=false,SnapshotJson=System.Text.Json.JsonSerializer.Serialize(new{PeriodStart=startDate,PeriodEnd=endDate,Tariff=item.tariff.PricePerKwh,item.tariff.Currency})});
+            db.Invoices.Add(new(){InvoiceNumber=$"INV-{next++:000000}",BillingPeriodId=period.Id,MeterId=item.meter.Id,ShopId=item.meter.ShopId,InvoiceDate=issued,DueDate=due,OpeningReading=item.opening?.AccumulatedKwh??item.meter.InitialReading,ClosingReading=item.closing.AccumulatedKwh,ConsumptionKwh=item.result.Consumption,TariffPerKwh=item.tariff.PricePerKwh,EnergyCharge=item.result.EnergyCharge,PreviousBalance=item.previous,Total=item.result.Total,Currency=item.tariff.Currency,Status=InvoiceStatus.Finalized,Locked=true,SnapshotJson=System.Text.Json.JsonSerializer.Serialize(new{PeriodStart=startDate,PeriodEnd=endDate,Tariff=item.tariff.PricePerKwh,item.tariff.Currency})});
         }
-        await db.SaveChangesAsync(token); return $"{items.Count} draft invoice(s) created for {startDate:dd MMM yyyy}–{endDate:dd MMM yyyy}.";
+        await db.SaveChangesAsync(token); return $"{items.Count} invoice(s) published for {startDate:dd MMM yyyy}–{endDate:dd MMM yyyy}.";
     }
 }
