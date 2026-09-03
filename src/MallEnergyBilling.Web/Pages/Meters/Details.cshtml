@@ -1,0 +1,35 @@
+@page "/Meters/{id:int}"
+@model MallEnergyBilling.Web.Pages.Meters.DetailsModel
+@{ ViewData["Title"] = $"{Model.Meter.Name} consumption"; }
+
+<section class="hero meter-detail-hero">
+    <div><span class="eyebrow">METER CONSUMPTION</span><h1>@Model.Meter.Name</h1><p>@Model.Meter.Shop?.Name · @Model.Meter.Shop?.TenantName · @Model.Meter.Controller?.Name</p></div>
+    <div class="meter-detail-actions"><span class="source-badge source-@Model.Meter.PowerSource.ToString().ToLowerInvariant()">@Model.Meter.PowerSource</span><a class="button" href="javascript:history.back()">Back</a></div>
+</section>
+
+<div class="cards meter-summary-cards">
+    <div class="metric"><span>Accumulated reading</span><b>@Model.Meter.LastReading.ToString("N3") kWh</b></div>
+    <div class="metric"><span>Communication</span><b>@Model.Meter.CommunicationStatus</b></div>
+    <div class="metric"><span>Serial number</span><b>@Model.Meter.SerialNumber</b></div>
+    <div class="metric"><span>Last reading</span><b>@(Model.Meter.LastReadingAt?.ToLocalTime().ToString("g") ?? "No recent reading")</b></div>
+</div>
+
+@foreach(var chart in new[]{Model.DayChart,Model.MonthChart,Model.YearChart}){
+<section class="panel usage-chart-panel">
+    <div class="panel-title"><div><span class="eyebrow">CONSUMPTION</span><h2>@chart.Title</h2><p class="note">@(chart.Title=="Per Day"?"Hourly consumption for today":chart.Title=="Per Month"?"Daily consumption for the current month":"Monthly consumption for the current year")</p></div><div class="usage-total"><small>Total usage</small><strong>@chart.Total.ToString("N3") kWh</strong></div></div>
+    @if(chart.Total == 0){<div class="meter-empty-state compact"><strong>@chart.EmptyMessage</strong><p>The chart will populate automatically as meter readings are collected.</p></div>}
+    <div class="usage-chart" role="img" aria-label="@chart.Title consumption chart">
+        @for(var i=0;i<chart.Bars.Count;i++){var bar=chart.Bars[i];var showLabel=i%chart.AxisStep==0;<div class="usage-column" title="@bar.Label: @bar.Value.ToString("N3") kWh"><span class="usage-value">@(bar.Value>0?bar.Value.ToString("0.###"):"")</span><div class="usage-bar-track"><span class="usage-bar" style="height:@chart.Height(bar.Value).ToString(System.Globalization.CultureInfo.InvariantCulture)%"></span></div><span class="usage-label">@(showLabel?bar.Label:"")</span></div>}
+    </div>
+</section>}
+
+@section Scripts{
+<script>
+(() => {
+  const key = "meter-details-scroll-@Model.Meter.Id";
+  const saved = sessionStorage.getItem(key);
+  if (saved !== null) { window.scrollTo(0, Number(saved)); sessionStorage.removeItem(key); }
+  window.setTimeout(() => { sessionStorage.setItem(key, String(window.scrollY)); window.location.reload(); }, 5000);
+})();
+</script>
+}
