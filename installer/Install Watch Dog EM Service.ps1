@@ -24,4 +24,11 @@ else {
 # Restart after the first three unexpected failures and reset the failure count daily.
 & sc.exe failure $serviceName reset= 86400 actions= restart/5000/restart/15000/restart/60000 | Out-Null
 & sc.exe failureflag $serviceName 1 | Out-Null
+
+# SMTP credentials are protected with Windows DPAPI. Restrict the persisted
+# data-protection keys to Local System (the service account) and Administrators.
+$keyDirectory = Join-Path $env:ProgramData 'Watch Dog EM\Keys'
+New-Item -ItemType Directory -Force -Path $keyDirectory | Out-Null
+& icacls.exe $keyDirectory /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
+
 Start-Service -Name $serviceName

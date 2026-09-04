@@ -4,7 +4,7 @@ Watch Dog EM — Watch Every Watt. Local web-based energy metering and shop bill
 
 ## Customer installation
 
-1. Download the Watch Dog EM v1.6.0 Windows package from the latest GitHub release.
+1. Download the Watch Dog EM v1.7.0 Windows package from the latest GitHub release.
 2. Run the installer and approve the Windows administrator prompt.
 3. Keep the default desktop shortcut selected.
 4. The **Watch Dog EM Server** Windows Service starts automatically. Double-click **Watch Dog EM** to open the dashboard.
@@ -34,6 +34,7 @@ The installer is self-contained; customers do not need to install .NET. Program 
 - Collapsible meter register and simplified Main/Settings navigation
 - Shop management and meter commissioning
 - Monthly billing data, invoice history, and professional PDF invoices
+- Optional SMTP delivery of published PDF invoices, disabled by default
 - Administrator-only controller configuration and audit history
 - CSV reading export
 - Guarded SQLite backup and restore
@@ -53,6 +54,10 @@ dotnet run --project src/MallEnergyBilling.Web --urls http://localhost:5080
 ```
 
 Open `http://localhost:5080` and sign in with an Administrator account to configure controllers, meters, users, tariffs, and billing.
+
+## Optional invoice email
+
+An Administrator can open **Settings > Invoice email**, enter the customer's SMTP server details, send a test email, and enable the feature. Published invoices then have an **Email PDF invoice** action that uses the shop email address by default. A separate global switch can automatically email every newly published invoice at period end; disabling that switch cancels unsent automatic deliveries and leaves manual sending available. Delivery is attempted up to five times at 15-minute intervals, and results are retained in the audit trail. SMTP passwords are encrypted with Windows data protection and are never displayed again or written to the audit log. For hosted email services, use the provider's SMTP app password when required.
 
 ## Build and test
 

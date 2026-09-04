@@ -1,0 +1,26 @@
+@page
+@model MallEnergyBilling.Web.Pages.Admin.Email.IndexModel
+@{ ViewData["Title"] = "Invoice email"; }
+<section class="hero compact"><div><span class="eyebrow">ADMINISTRATOR ONLY</span><h1>Invoice email</h1><p>Optionally send published PDF invoices through the customer's SMTP provider.</p></div></section>
+<section class="panel admin-form">
+    <h2>SMTP configuration</h2>
+    <p class="note">Disabled by default. Save and test the provider settings before enabling customer delivery. The password is encrypted for this Windows installation and is never displayed again.</p>
+    @if(TempData["EmailSuccess"] is string success){<div class="alert-success">@success</div>}
+    <form method="post">
+        <div asp-validation-summary="All" class="validation"></div>
+        <div class="form-grid">
+            <label class="check"><input asp-for="Input.Enabled"/> Enable PDF invoice email</label>
+            <label class="check"><input asp-for="Input.AutoSendPublishedInvoices"/> Automatically email every newly published invoice</label>
+            <label>SMTP server<input asp-for="Input.Host" placeholder="smtp.example.com"/></label>
+            <label>Port<input asp-for="Input.Port"/></label>
+            <label class="check"><input asp-for="Input.EnableSsl"/> Use SSL/TLS (STARTTLS)</label>
+            <label>SMTP username<input asp-for="Input.Username" autocomplete="username"/></label>
+            <label>SMTP password or app password<input asp-for="Input.Password" autocomplete="new-password" placeholder="@(Model.PasswordSaved?"Password saved - leave blank to keep it":"Enter SMTP password")"/></label>
+            <label>Sender email<input asp-for="Input.FromEmail" placeholder="billing@example.com"/></label>
+            <label>Sender name<input asp-for="Input.FromName"/></label>
+            <label>Test recipient<input asp-for="Input.TestRecipient" placeholder="your-email@example.com"/></label>
+        </div>
+        <p class="note"><strong>Global control:</strong> turn on both switches to email every customer automatically at the end of the billing period. Turn off automatic delivery to keep the manual email button only, or turn off PDF invoice email to disable all sending.</p>
+        <div class="btn-row"><button asp-page-handler="Save">Save SMTP settings</button><button asp-page-handler="Test" class="button">Send test email</button></div>
+    </form>
+</section>

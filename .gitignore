@@ -10,6 +10,7 @@ dist/
 *.db-shm
 *.db-wal
 Backups/
+src/MallEnergyBilling.Web/Keys/
 
 # Local tooling and temporary files
 .dotnet-cli/

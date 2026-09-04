@@ -49,6 +49,7 @@ public sealed class InvoiceSchedulerService(IServiceScopeFactory scopes, ILogger
         var readings=(await db.MeterReadings.ToListAsync(token)).Where(x=>x.Timestamp<endExclusive).OrderBy(x=>x.Timestamp).ToList();
         var tariffs=await db.Tariffs.ToListAsync(token);
         var priorInvoices=await db.Invoices.Include(x=>x.Payments).Where(x=>x.Status!=InvoiceStatus.Cancelled).ToListAsync(token);
+        var autoEmail=await db.SmtpConfigurations.AsNoTracking().AnyAsync(x=>x.Enabled&&x.AutoSendPublishedInvoices,token);
         var items=new List<(Meter meter,MeterReading? opening,MeterReading closing,Tariff tariff,BillingResult result,decimal previous)>();
         var errors=new List<string>();
         foreach(var meter in meters)
@@ -67,7 +68,7 @@ public sealed class InvoiceSchedulerService(IServiceScopeFactory scopes, ILogger
         foreach(var item in items)
         {
             item.closing.UsedForBilling=true;if(item.opening is not null)item.opening.UsedForBilling=true;
-            db.Invoices.Add(new(){InvoiceNumber=$"INV-{next++:000000}",BillingPeriodId=period.Id,MeterId=item.meter.Id,ShopId=item.meter.ShopId,InvoiceDate=issued,DueDate=due,OpeningReading=item.opening?.AccumulatedKwh??item.meter.InitialReading,ClosingReading=item.closing.AccumulatedKwh,ConsumptionKwh=item.result.Consumption,TariffPerKwh=item.tariff.PricePerKwh,EnergyCharge=item.result.EnergyCharge,PreviousBalance=item.previous,Total=item.result.Total,Currency=item.tariff.Currency,Status=InvoiceStatus.Finalized,Locked=true,SnapshotJson=System.Text.Json.JsonSerializer.Serialize(new{PeriodStart=startDate,PeriodEnd=endDate,Tariff=item.tariff.PricePerKwh,item.tariff.Currency})});
+            db.Invoices.Add(new(){InvoiceNumber=$"INV-{next++:000000}",BillingPeriodId=period.Id,MeterId=item.meter.Id,ShopId=item.meter.ShopId,InvoiceDate=issued,DueDate=due,OpeningReading=item.opening?.AccumulatedKwh??item.meter.InitialReading,ClosingReading=item.closing.AccumulatedKwh,ConsumptionKwh=item.result.Consumption,TariffPerKwh=item.tariff.PricePerKwh,EnergyCharge=item.result.EnergyCharge,PreviousBalance=item.previous,Total=item.result.Total,Currency=item.tariff.Currency,Status=InvoiceStatus.Finalized,Locked=true,AutoEmailRequested=autoEmail,SnapshotJson=System.Text.Json.JsonSerializer.Serialize(new{PeriodStart=startDate,PeriodEnd=endDate,Tariff=item.tariff.PricePerKwh,item.tariff.Currency})});
         }
         await db.SaveChangesAsync(token); return $"{items.Count} invoice(s) published for {startDate:dd MMM yyyy}–{endDate:dd MMM yyyy}.";
     }

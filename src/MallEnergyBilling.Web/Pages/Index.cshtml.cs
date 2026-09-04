@@ -11,6 +11,7 @@ public class IndexModel(ApplicationDbContext db) : PageModel
     public List<Meter> Meters { get; set; } = [];
     public List<Invoice> Invoices { get; set; } = [];
     public List<Tariff> CurrentTariffs { get; set; } = [];
+    public IReadOnlyDictionary<int, Tariff> CurrentTariffByMeter { get; private set; } = new Dictionary<int, Tariff>();
     public int Shops { get; set; }
     public string TariffSummary { get; set; } = "No meter tariffs";
     public string OutstandingSummary { get; set; } = "No unpaid invoices";
@@ -22,6 +23,7 @@ public class IndexModel(ApplicationDbContext db) : PageModel
         Meters = await db.Meters.Include(x => x.Shop).Include(x => x.Controller).ToListAsync();
         var all = (await db.Tariffs.Include(x => x.Meter).ToListAsync()).Where(x => x.MeterId != null && x.EffectiveFrom <= DateTimeOffset.UtcNow);
         CurrentTariffs = all.GroupBy(x => x.MeterId).Select(g => g.OrderByDescending(x => x.EffectiveFrom).First()).ToList();
+        CurrentTariffByMeter = CurrentTariffs.Where(x => x.MeterId.HasValue).ToDictionary(x => x.MeterId!.Value);
         if (CurrentTariffs.Count > 0)
         {
             TariffSummary = string.Join(" · ", CurrentTariffs.GroupBy(x => x.Currency).OrderBy(x => x.Key).Select(g =>

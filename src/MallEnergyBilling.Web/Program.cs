@@ -1,6 +1,7 @@
 using MallEnergyBilling.Web.Data;
 using MallEnergyBilling.Web.Services;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -19,6 +20,10 @@ if (!builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(configured
 Directory.CreateDirectory(dataDirectory);
 var appDataPaths = new AppDataPaths(dataDirectory);
 builder.Services.AddSingleton(appDataPaths);
+var dataProtection = builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataDirectory, "Keys")))
+    .SetApplicationName("WatchDogEM");
+if (OperatingSystem.IsWindows()) dataProtection.ProtectKeysWithDpapi(protectToLocalMachine: true);
 builder.Logging.AddProvider(new DailyFileLoggerProvider(Path.Combine(dataDirectory, "Logs")));
 var cs = $"Data Source={appDataPaths.DatabasePath};Cache=Shared";
 builder.Services.AddDbContext<ApplicationDbContext>(o => o.UseSqlite(cs));
@@ -38,16 +43,19 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AuthorizeFolder("/Admin/Shops", "AdministratorOnly");
     o.Conventions.AuthorizeFolder("/Admin/Audit", "AdministratorOnly");
     o.Conventions.AuthorizeFolder("/Admin/Users", "AdministratorOnly");
+    o.Conventions.AuthorizeFolder("/Admin/Email", "AdministratorOnly");
 });
 builder.Services.AddAuthorization(o => o.AddPolicy("AdministratorOnly", p => p.RequireRole("Administrator")));
 builder.Services.AddSingleton<BillingCalculator>();
 builder.Services.AddSingleton<TariffResolver>();
 builder.Services.AddSingleton<IModbusRtuService, ModbusRtuService>();
 builder.Services.AddSingleton<InvoicePdfService>();
+builder.Services.AddScoped<InvoiceEmailService>();
 builder.Services.AddSingleton<DatabaseMaintenanceService>();
 builder.Services.AddHostedService<MeterPollingService>();
 builder.Services.AddHostedService<AutomaticBackupService>();
 builder.Services.AddHostedService<InvoiceSchedulerService>();
+builder.Services.AddHostedService<AutomaticInvoiceEmailService>();
 
 var app = builder.Build();
 if (!app.Environment.IsDevelopment()) { app.UseExceptionHandler("/Error"); app.UseHsts(); }
