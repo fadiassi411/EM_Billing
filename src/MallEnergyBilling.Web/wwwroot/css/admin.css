@@ -3,6 +3,8 @@ textarea{width:100%;border:1px solid #cbd6da;border-radius:5px;padding:9px;backg
 .form-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
 .form-grid label,.admin-form>label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:#53636d}
 .form-grid input,.form-grid select{width:100%}
+.transport-settings{grid-column:1/-1;margin-bottom:0}
+.transport-settings[hidden]{display:none!important}
 .billing-form{background:#f7fbfb;border:1px solid var(--line);border-radius:8px;padding:18px;margin:14px 0 24px}
 .billing-form .note{margin-top:0}
 .check{flex-direction:row!important;align-items:center!important}

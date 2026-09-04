@@ -4,7 +4,7 @@ Watch Dog EM — Watch Every Watt. Local web-based energy metering and shop bill
 
 ## Customer installation
 
-1. Download the Watch Dog EM v1.7.0 Windows package from the latest GitHub release.
+1. Download the Watch Dog EM v1.8.0 Windows package from the latest GitHub release.
 2. Run the installer and approve the Windows administrator prompt.
 3. Keep the default desktop shortcut selected.
 4. The **Watch Dog EM Server** Windows Service starts automatically. Double-click **Watch Dog EM** to open the dashboard.
@@ -23,7 +23,7 @@ The installer is self-contained; customers do not need to install .NET. Program 
 
 ## Features
 
-- Physical Modbus RTU communication over Windows serial ports
+- Selectable Modbus RTU over Windows serial ports or Modbus TCP/IP over Ethernet
 - Multiple controllers with up to 45 meter channels per controller
 - Configurable register address, data type, word order, and scaling per meter
 - Live dashboard with automatic refresh and communication status
@@ -69,6 +69,8 @@ dotnet publish src/MallEnergyBilling.Web/MallEnergyBilling.Web.csproj --configur
 ## Typical Delta DDC configuration
 
 The commissioned reference setup uses Modbus RTU, 9600 baud, even parity, 8 data bits, 1 stop bit, slave address 1, and Windows COM1. A Delta `D100/D101` UInt32 value is addressed as holding register `4196`, decoded `LowHigh`, and scaled by `0.01` for kWh. Always verify these values against the actual DDC program and Windows COM assignment.
+
+For Modbus TCP/IP, select **Modbus TCP/IP (Ethernet)** on the controller page, enter the controller or gateway IP address, TCP port (normally `502`), and the slave/unit address. Meter register addresses, data types, word order, scaling, polling interval, timeout, and retry settings work the same way for both transports.
 
 ## Data protection
 

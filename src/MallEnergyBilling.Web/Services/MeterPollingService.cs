@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MallEnergyBilling.Web.Services;
 
-public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusRtuService modbus, DatabaseMaintenanceService maintenance, ILogger<MeterPollingService> log) : BackgroundService
+public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusService modbus, DatabaseMaintenanceService maintenance, ILogger<MeterPollingService> log) : BackgroundService
 {
     readonly Dictionary<int, DateTimeOffset> nextPoll = [];
     protected override async Task ExecuteAsync(CancellationToken ct)
@@ -18,7 +18,7 @@ public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusRtuS
                 try
                 {
                     using var scope = scopes.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(); var now = DateTimeOffset.UtcNow;
-                    due = await db.Controllers.Where(x => x.Enabled && x.CommunicationType == "ModbusRtu" && db.Meters.Any(m => m.ControllerId == x.Id && m.Active)).Select(x => x.Id).ToListAsync(ct);
+                    due = await db.Controllers.Where(x => x.Enabled && (x.CommunicationType == "ModbusRtu" || x.CommunicationType == "ModbusTcp") && db.Meters.Any(m => m.ControllerId == x.Id && m.Active)).Select(x => x.Id).ToListAsync(ct);
                     due = due.Where(id => !nextPoll.TryGetValue(id, out var at) || at <= now).ToList();
                 }
                 finally { maintenance.Gate.Release(); }
@@ -47,15 +47,17 @@ public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusRtuS
             {
                 var count = ModbusValueConverter.RegisterCount(meter.DataType); var result = await modbus.ReadHoldingRegistersAsync(controller, meter.StartingRegister, count, ct); var value = ModbusValueConverter.ConvertValue(result.Registers, meter.DataType, meter.WordOrder, meter.ScalingFactor);
                 if (value < meter.LastReading && meter.LastReadingAt is not null) db.MeterReadings.Add(new() { MeterId = meter.Id, RawValue = (ulong)Math.Max(0, value / meter.ScalingFactor), AccumulatedKwh = value, Timestamp = DateTimeOffset.UtcNow, Source = ReadingSource.Automatic, Quality = "Review: lower than previous", RequiresReview = true });
-                meter.LastReading = value; meter.LastReadingAt = DateTimeOffset.UtcNow; meter.CommunicationStatus = "Connected"; controller.LastSuccess = DateTimeOffset.UtcNow; controller.Condition = "Connected"; controller.Notes = $"Last RTU request {result.RequestHex}; response {result.ResponseHex}";
+                meter.LastReading = value; meter.LastReadingAt = DateTimeOffset.UtcNow; meter.CommunicationStatus = "Connected"; controller.LastSuccess = DateTimeOffset.UtcNow; controller.Condition = "Connected"; controller.Notes = $"Last {TransportName(controller)} request {result.RequestHex}; response {result.ResponseHex}";
                 await SaveHistoryIfDue(db, meter, ct);
             }
-            catch (Exception ex) { meter.CommunicationStatus = "Failed"; controller.Condition = "Failed"; controller.Notes = ex.Message; transportFailed = true; log.LogWarning(ex, "RTU read failed for controller {Controller} on {Port}; remaining channels skipped until next poll", controller.Name, controller.ComPort); }
+            catch (Exception ex) { meter.CommunicationStatus = "Failed"; controller.Condition = "Failed"; controller.Notes = ex.Message; transportFailed = true; log.LogWarning(ex, "{Transport} read failed for controller {Controller} on {Endpoint}; remaining channels skipped until next poll", TransportName(controller), controller.Name, controller.CommunicationType=="ModbusTcp"?$"{controller.IpAddress}:{controller.TcpPort}":controller.ComPort); }
         }
         await maintenance.Gate.WaitAsync(ct);
         try { await db.SaveChangesAsync(ct); }
         finally { maintenance.Gate.Release(); }
     }
+
+    static string TransportName(Controller controller) => controller.CommunicationType == "ModbusTcp" ? "TCP/IP" : "RTU";
 
     static async Task SaveHistoryIfDue(ApplicationDbContext db, Meter meter, CancellationToken ct)
     {

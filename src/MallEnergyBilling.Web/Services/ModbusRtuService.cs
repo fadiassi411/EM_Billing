@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.IO.Ports;
+using System.Net.Sockets;
 using MallEnergyBilling.Web.Models;
 using ControllerModel = MallEnergyBilling.Web.Models.Controller;
 
@@ -7,12 +8,12 @@ namespace MallEnergyBilling.Web.Services;
 
 public sealed record ModbusReadResult(ushort[] Registers, string RequestHex, string ResponseHex);
 
-public interface IModbusRtuService
+public interface IModbusService
 {
     Task<ModbusReadResult> ReadHoldingRegistersAsync(ControllerModel controller, int startAddress, ushort count, CancellationToken cancellationToken = default);
 }
 
-public sealed class ModbusRtuService(ILogger<ModbusRtuService> logger) : IModbusRtuService
+public sealed class ModbusService(ILogger<ModbusService> logger) : IModbusService
 {
     private readonly ConcurrentDictionary<string, SemaphoreSlim> portLocks = new(StringComparer.OrdinalIgnoreCase);
 
@@ -20,22 +21,23 @@ public sealed class ModbusRtuService(ILogger<ModbusRtuService> logger) : IModbus
     {
         if (startAddress is < 0 or > 65535) throw new ArgumentOutOfRangeException(nameof(startAddress));
         if (count is < 1 or > 125) throw new ArgumentOutOfRangeException(nameof(count));
-        var gate = portLocks.GetOrAdd(c.ComPort, _ => new SemaphoreSlim(1, 1));
+        var endpoint = c.CommunicationType == "ModbusTcp" ? $"{c.IpAddress}:{c.TcpPort}" : c.ComPort;
+        var gate = portLocks.GetOrAdd(endpoint, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(ct);
         try
         {
             Exception? last = null;
             for (var attempt = 0; attempt <= c.RetryCount; attempt++)
             {
-                try { return await Task.Run(() => ReadOnce(c, startAddress, count), ct); }
-                catch (Exception ex) when (attempt < c.RetryCount) { last = ex; logger.LogWarning(ex, "Modbus attempt {Attempt} failed on {Port}", attempt + 1, c.ComPort); await Task.Delay(100, ct); }
+                try { return c.CommunicationType == "ModbusTcp" ? await ReadTcpOnceAsync(c, startAddress, count, ct) : await Task.Run(() => ReadRtuOnce(c, startAddress, count), ct); }
+                catch (Exception ex) when (attempt < c.RetryCount) { last = ex; logger.LogWarning(ex, "Modbus attempt {Attempt} failed on {Endpoint}", attempt + 1, endpoint); await Task.Delay(100, ct); }
             }
             throw last ?? new IOException("Modbus RTU read failed.");
         }
         finally { gate.Release(); }
     }
 
-    private static ModbusReadResult ReadOnce(ControllerModel c, int startAddress, ushort count)
+    private static ModbusReadResult ReadRtuOnce(ControllerModel c, int startAddress, ushort count)
     {
         var request = new byte[8]; request[0] = c.SlaveAddress; request[1] = 3; request[2] = (byte)(startAddress >> 8); request[3] = (byte)startAddress; request[4] = (byte)(count >> 8); request[5] = (byte)count;
         var crc = Crc16(request.AsSpan(0, 6)); request[6] = (byte)crc; request[7] = (byte)(crc >> 8);
@@ -52,6 +54,38 @@ public sealed class ModbusRtuService(ILogger<ModbusRtuService> logger) : IModbus
         if (receivedCrc != calculatedCrc) throw new IOException($"CRC mismatch: received {receivedCrc:X4}, calculated {calculatedCrc:X4}.");
         var registers = new ushort[count]; for (var n = 0; n < count; n++) registers[n] = (ushort)(response[3 + n * 2] << 8 | response[4 + n * 2]);
         return new(registers, Convert.ToHexString(request), Convert.ToHexString(response));
+    }
+
+    private static async Task<ModbusReadResult> ReadTcpOnceAsync(ControllerModel c, int startAddress, ushort count, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(c.IpAddress)) throw new InvalidOperationException("Controller IP address or host name is required.");
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(Math.Max(100, c.TimeoutMilliseconds));
+        using var client = new TcpClient();
+        await client.ConnectAsync(c.IpAddress.Trim(), c.TcpPort, timeout.Token);
+        await using var stream = client.GetStream();
+        var transaction = unchecked((ushort)Environment.TickCount);
+        var request = new byte[12];
+        request[0]=(byte)(transaction>>8);request[1]=(byte)transaction;request[4]=0;request[5]=6;request[6]=c.SlaveAddress;request[7]=3;request[8]=(byte)(startAddress>>8);request[9]=(byte)startAddress;request[10]=(byte)(count>>8);request[11]=(byte)count;
+        await stream.WriteAsync(request, timeout.Token);
+        var header = await ReadExactAsync(stream, 7, timeout.Token);
+        var responseTransaction=(ushort)(header[0]<<8|header[1]);if(responseTransaction!=transaction)throw new IOException("Unexpected Modbus TCP transaction identifier.");
+        if(header[2]!=0||header[3]!=0)throw new IOException("Invalid Modbus TCP protocol identifier.");
+        if(header[6]!=c.SlaveAddress)throw new IOException($"Unexpected unit {header[6]}; expected {c.SlaveAddress}.");
+        var remaining=(header[4]<<8|header[5])-1;if(remaining<2||remaining>254)throw new IOException("Invalid Modbus TCP response length.");
+        var pdu=await ReadExactAsync(stream,remaining,timeout.Token);var response=header.Concat(pdu).ToArray();
+        if((pdu[0]&0x80)!=0)throw new IOException($"Controller returned Modbus exception code {pdu[1]}.");
+        if(pdu[0]!=3)throw new IOException($"Unexpected function {pdu[0]}.");
+        if(pdu[1]!=count*2||pdu.Length!=2+pdu[1])throw new IOException($"Unexpected byte count {pdu[1]}; expected {count*2}.");
+        var registers=new ushort[count];for(var n=0;n<count;n++)registers[n]=(ushort)(pdu[2+n*2]<<8|pdu[3+n*2]);
+        return new(registers,Convert.ToHexString(request),Convert.ToHexString(response));
+    }
+
+    private static async Task<byte[]> ReadExactAsync(NetworkStream stream, int length, CancellationToken ct)
+    {
+        var data=new byte[length];var offset=0;
+        while(offset<length){var read=await stream.ReadAsync(data.AsMemory(offset,length-offset),ct);if(read==0)throw new IOException("The Modbus TCP connection closed before a complete response was received.");offset+=read;}
+        return data;
     }
 
     private static byte[] ReadExact(SerialPort port, int length)

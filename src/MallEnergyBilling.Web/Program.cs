@@ -48,7 +48,7 @@ builder.Services.AddRazorPages(o =>
 builder.Services.AddAuthorization(o => o.AddPolicy("AdministratorOnly", p => p.RequireRole("Administrator")));
 builder.Services.AddSingleton<BillingCalculator>();
 builder.Services.AddSingleton<TariffResolver>();
-builder.Services.AddSingleton<IModbusRtuService, ModbusRtuService>();
+builder.Services.AddSingleton<IModbusService, ModbusService>();
 builder.Services.AddSingleton<InvoicePdfService>();
 builder.Services.AddScoped<InvoiceEmailService>();
 builder.Services.AddSingleton<DatabaseMaintenanceService>();
