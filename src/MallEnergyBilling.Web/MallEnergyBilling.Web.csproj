@@ -18,6 +18,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Identity.UI" Version="8.0.30" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.30" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.30" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
     <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.0" />
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
   </ItemGroup>

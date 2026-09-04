@@ -4,13 +4,22 @@ Watch Dog EM — Watch Every Watt. Local web-based energy metering and shop bill
 
 ## Customer installation
 
-1. Download the Watch Dog EM v1.4.0 Windows package from the latest GitHub release.
+1. Download the Watch Dog EM v1.5.0 Windows package from the latest GitHub release.
 2. Run the installer and approve the Windows administrator prompt.
 3. Keep the default desktop shortcut selected.
-4. Double-click **Watch Dog EM**; the local service starts silently and opens the dashboard.
+4. The **Watch Dog EM Server** Windows Service starts automatically. Double-click **Watch Dog EM** to open the dashboard.
 5. Sign in with the Administrator username and password created during initial setup.
 
 The installer is self-contained; customers do not need to install .NET. Program files are installed under `Program Files\Watch Dog EM`. The live database and backups are stored separately under `ProgramData\Watch Dog EM`, and upgrades do not replace that customer data. Existing version 1.0 customer data is migrated automatically on first start.
+
+### Unattended operation
+
+- Locking Windows with **Win + L** is safe; the server continues running as a Windows Service.
+- Set Windows **Sleep** to **Never when plugged in**. Sleep suspends the USB/RS-485 adapter and no readings can be collected while the computer sleeps.
+- Windows may turn off the display; display-off does not stop metering.
+- Keep the laptop connected to reliable AC power and configure Windows Update active hours/restart notifications.
+- Service diagnostics are retained for 30 days in `C:\ProgramData\Watch Dog EM\Logs`.
+- In Windows Services, **Watch Dog EM Server** should show `Running` and `Automatic (Delayed Start)`. The installer configures three automatic restart attempts after failures.
 
 ## Features
 

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Host.UseWindowsService(options => options.ServiceName = "Watch Dog EM Server");
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 var configuredDataDirectory = builder.Configuration["Storage:DataDirectory"];
@@ -18,6 +19,7 @@ if (!builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(configured
 Directory.CreateDirectory(dataDirectory);
 var appDataPaths = new AppDataPaths(dataDirectory);
 builder.Services.AddSingleton(appDataPaths);
+builder.Logging.AddProvider(new DailyFileLoggerProvider(Path.Combine(dataDirectory, "Logs")));
 var cs = $"Data Source={appDataPaths.DatabasePath};Cache=Shared";
 builder.Services.AddDbContext<ApplicationDbContext>(o => o.UseSqlite(cs));
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();

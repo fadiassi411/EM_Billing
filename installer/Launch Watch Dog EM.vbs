@@ -1,20 +1,19 @@
 Option Explicit
 
-Dim shell, http, fileSystem, installDirectory, appPath, url, command, attempt
+Dim shell, http, fileSystem, installDirectory, url, attempt
 Set shell = CreateObject("WScript.Shell")
 Set fileSystem = CreateObject("Scripting.FileSystemObject")
 installDirectory = fileSystem.GetParentFolderName(WScript.ScriptFullName)
 shell.CurrentDirectory = installDirectory
 url = "http://localhost:5080"
-appPath = installDirectory & "\MallEnergyBilling.Web.exe"
-
 If IsRunning(url) Then
     shell.Run url, 1, False
     WScript.Quit 0
 End If
 
-command = Chr(34) & appPath & Chr(34) & " --urls " & url
-shell.Run command, 0, False
+' The metering server runs independently as a Windows Service. Starting it here
+' is only a recovery path if it was manually stopped after Windows started.
+shell.Run "sc.exe start WatchDogEM", 0, True
 
 For attempt = 1 To 40
     WScript.Sleep 500
@@ -24,7 +23,7 @@ For attempt = 1 To 40
     End If
 Next
 
-MsgBox "Watch Dog EM could not start. Restart Windows and try again.", 16, "Watch Dog EM"
+MsgBox "The Watch Dog EM Server is not running. Restart Windows or ask an administrator to start the 'Watch Dog EM Server' service.", 16, "Watch Dog EM"
 WScript.Quit 1
 
 Function IsRunning(address)
