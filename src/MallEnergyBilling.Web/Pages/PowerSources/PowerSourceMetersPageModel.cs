@@ -13,11 +13,11 @@ public abstract class PowerSourceMetersPageModel(ApplicationDbContext db, PowerS
 
     public IReadOnlyList<Meter> Meters { get; private set; } = [];
     public PowerSource Source { get; } = source;
-    public string Title => Source == PowerSource.UMEME ? "UMEME" : "Generator";
-    public string Description => Source == PowerSource.UMEME
-        ? "Electricity meters supplied by the Ugandan government utility."
+    public string Title => Source == PowerSource.Grid ? "Grid" : "Generator";
+    public string Description => Source == PowerSource.Grid
+        ? "Electricity meters supplied by the public utility grid."
         : "Electricity meters supplied by on-site generators.";
-    public string PagePath => Source == PowerSource.UMEME ? "/PowerSources/UMEME" : "/PowerSources/Generator";
+    public string PagePath => Source == PowerSource.Grid ? "/PowerSources/Grid" : "/PowerSources/Generator";
 
     protected async Task LoadMetersAsync()
     {

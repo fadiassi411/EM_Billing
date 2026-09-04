@@ -1,11 +1,11 @@
-@page "/UMEME"
-@model MallEnergyBilling.Web.Pages.PowerSources.UMEMEModel
-@{ ViewData["Title"] = "UMEME meters"; }
+@page "/Grid"
+@model MallEnergyBilling.Web.Pages.PowerSources.GridModel
+@{ ViewData["Title"] = "Grid meters"; }
 <partial name="_PowerSourceMeters" model="Model" />
 @section Scripts{
 <script>
 (() => {
-  const key = "umeme-page-scroll";
+  const key = "grid-page-scroll";
   const saved = sessionStorage.getItem(key);
   if (saved !== null) { window.scrollTo(0, Number(saved)); sessionStorage.removeItem(key); }
   window.setTimeout(() => {

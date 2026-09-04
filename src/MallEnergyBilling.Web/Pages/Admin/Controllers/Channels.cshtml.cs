@@ -17,7 +17,7 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
     [BindProperty, Range(1, 45)] public int ChannelCount { get; set; } = 45;
     [BindProperty] public RegisterDataType DataType { get; set; } = RegisterDataType.UInt32;
     [BindProperty] public WordOrder WordOrder { get; set; } = WordOrder.LowHigh;
-    [BindProperty] public PowerSource PowerSource { get; set; } = PowerSource.UMEME;
+    [BindProperty] public PowerSource PowerSource { get; set; } = PowerSource.Grid;
     [BindProperty, Range(typeof(decimal), "0.00000001", "1000000")] public decimal ScalingFactor { get; set; } = .01m;
     [BindProperty, Range(1, int.MaxValue)] public int ShopId { get; set; }
     [BindProperty, StringLength(40)] public string MeterNamePrefix { get; set; } = "Meter";

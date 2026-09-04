@@ -10,7 +10,7 @@ public sealed class PowerSourceMeterTests
         Id = 42,
         Name = "Main incomer",
         SerialNumber = "UM-9001",
-        PowerSource = PowerSource.UMEME,
+        PowerSource = PowerSource.Grid,
         Shop = new Shop
         {
             ShopNumber = "SHOP-12",
@@ -37,5 +37,5 @@ public sealed class PowerSourceMeterTests
 
     [Fact]
     public void SupportsOnlyRequestedPowerSources() =>
-        Assert.Equal([PowerSource.UMEME, PowerSource.Generator], Enum.GetValues<PowerSource>());
+        Assert.Equal([PowerSource.Grid, PowerSource.Generator], Enum.GetValues<PowerSource>());
 }

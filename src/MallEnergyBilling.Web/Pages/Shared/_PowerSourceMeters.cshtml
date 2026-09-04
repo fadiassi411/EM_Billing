@@ -11,7 +11,7 @@
 <section class="meter-search-banner" aria-labelledby="meter-search-title">
     <div class="search-banner-copy">
         <span class="search-power-icon" aria-hidden="true">
-            @if(Model.Source == MallEnergyBilling.Web.Models.PowerSource.UMEME){<svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>}
+            @if(Model.Source == MallEnergyBilling.Web.Models.PowerSource.Grid){<svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>}
             else{<svg viewBox="0 0 24 24"><path d="M12 2v8m0 4v8M4.9 4.9l5.7 5.7m2.8 2.8 5.7 5.7M2 12h8m4 0h8M4.9 19.1l5.7-5.7m2.8-2.8 5.7-5.7"/></svg>}
         </span>
         <div><h2 id="meter-search-title">Find a @Model.Title meter</h2><p>Search by meter number, ID, name, customer, tenant, shop, room, or location.</p></div>

@@ -31,7 +31,7 @@
             <div>WATCH DOG EM<small>Watch Every Watt</small></div>
         </a>
         <nav>
-            <details class="nav-menu"><summary>Main</summary><div><a asp-page="/Index">Dashboard</a>@if(User.Identity?.IsAuthenticated==true){<a asp-page="/PowerSources/UMEME">⚡ UMEME</a><a asp-page="/PowerSources/Generator">⌁ Generator</a><a asp-page="/Operations/Index">Operations</a><a asp-page="/Invoices/Index">Published invoices</a>}</div></details>
+            <details class="nav-menu"><summary>Main</summary><div><a asp-page="/Index">Dashboard</a>@if(User.Identity?.IsAuthenticated==true){<a asp-page="/PowerSources/Grid">⚡ Grid</a><a asp-page="/PowerSources/Generator">⌁ Generator</a><a asp-page="/Operations/Index">Operations</a><a asp-page="/Invoices/Index">Published invoices</a>}</div></details>
             <details class="nav-menu"><summary>Settings</summary><div>@if(User.IsInRole("Administrator")){<a asp-page="/Admin/Shops/Index">Shops</a><a asp-page="/Admin/Controllers/Index">Controller setup</a><a asp-page="/Admin/Users/Index">Users &amp; Access</a><a asp-page="/Admin/Audit/Index">Audit trail</a><a asp-page="/Operations/Index" asp-fragment="backup">Backup &amp; restore</a>}else{<a asp-page="/Admin/Login">Administrator login</a>}</div></details>
             <partial name="_LoginPartial" />
         </nav>

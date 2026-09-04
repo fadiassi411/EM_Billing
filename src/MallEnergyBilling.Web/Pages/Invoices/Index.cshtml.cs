@@ -28,7 +28,7 @@ public sealed class IndexModel(ApplicationDbContext db) : PageModel
     static bool Matches(Invoice x, string term)
     {
         var local = x.InvoiceDate.ToLocalTime();
-        var searchable = $"{x.InvoiceNumber} {x.Shop?.Name} {x.Shop?.ShopNumber} {x.Shop?.TenantName} {x.Meter?.Name} {local:dd} {local:MM} {local:yyyy} {local:dd/MM/yyyy} {local:dd MMM yyyy} {local:MMMM yyyy}".ToLowerInvariant();
+        var searchable = $"{x.InvoiceNumber} {x.Shop?.Name} {x.Shop?.ShopNumber} {x.Shop?.TenantName} {x.Meter?.Name} {x.Meter?.PowerSource} {local:dd} {local:MM} {local:yyyy} {local:dd/MM/yyyy} {local:dd MMM yyyy} {local:MMMM yyyy}".ToLowerInvariant();
         return searchable.Contains(term);
     }
 }
