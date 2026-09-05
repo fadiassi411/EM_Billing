@@ -19,8 +19,8 @@ public class IndexModel(ApplicationDbContext db) : PageModel
 
     public async Task OnGet()
     {
-        Meters = await db.Meters.Include(x => x.Shop).Include(x => x.Controller).ToListAsync();
-        var all = (await db.Tariffs.Include(x => x.Meter).ToListAsync()).Where(x => x.MeterId != null && x.EffectiveFrom <= DateTimeOffset.UtcNow);
+        Meters = await db.Meters.Include(x => x.Shop).Include(x => x.Controller).Where(x=>x.UtilityType==UtilityType.Electricity).ToListAsync();
+        var all = (await db.Tariffs.Include(x => x.Meter).ToListAsync()).Where(x => x.MeterId != null && x.Meter?.UtilityType==UtilityType.Electricity && x.EffectiveFrom <= DateTimeOffset.UtcNow);
         CurrentTariffs = all.GroupBy(x => x.MeterId).Select(g => g.OrderByDescending(x => x.EffectiveFrom).First()).ToList();
         if (CurrentTariffs.Count > 0)
         {

@@ -25,7 +25,7 @@ public abstract class PowerSourceMetersPageModel(ApplicationDbContext db, PowerS
             .AsNoTracking()
             .Include(x => x.Shop)
             .Include(x => x.Controller)
-            .Where(x => x.PowerSource == Source)
+            .Where(x => x.UtilityType == UtilityType.Electricity && x.PowerSource == Source)
             .OrderBy(x => x.Name)
             .ToListAsync();
 

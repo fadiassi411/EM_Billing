@@ -39,11 +39,13 @@ builder.Services.AddRazorPages(o =>
 {
     o.Conventions.AuthorizeFolder("/Operations");
     o.Conventions.AuthorizeFolder("/PowerSources");
+    o.Conventions.AuthorizeFolder("/Water");
     o.Conventions.AuthorizeFolder("/Admin/Controllers", "AdministratorOnly");
     o.Conventions.AuthorizeFolder("/Admin/Shops", "AdministratorOnly");
     o.Conventions.AuthorizeFolder("/Admin/Audit", "AdministratorOnly");
     o.Conventions.AuthorizeFolder("/Admin/Users", "AdministratorOnly");
     o.Conventions.AuthorizeFolder("/Admin/Email", "AdministratorOnly");
+    o.Conventions.AuthorizeFolder("/Admin/Features", "AdministratorOnly");
 });
 builder.Services.AddAuthorization(o => o.AddPolicy("AdministratorOnly", p => p.RequireRole("Administrator")));
 builder.Services.AddSingleton<BillingCalculator>();
@@ -51,6 +53,7 @@ builder.Services.AddSingleton<TariffResolver>();
 builder.Services.AddSingleton<IModbusService, ModbusService>();
 builder.Services.AddSingleton<InvoicePdfService>();
 builder.Services.AddScoped<InvoiceEmailService>();
+builder.Services.AddScoped<SystemFeatureService>();
 builder.Services.AddSingleton<DatabaseMaintenanceService>();
 builder.Services.AddHostedService<MeterPollingService>();
 builder.Services.AddHostedService<AutomaticBackupService>();

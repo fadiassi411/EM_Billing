@@ -8,7 +8,7 @@
 </section>
 
 <div class="cards meter-summary-cards">
-    <div class="metric"><span>Accumulated reading</span><b>@Model.Meter.LastReading.ToString("N3") kWh</b></div>
+    <div class="metric"><span>Accumulated reading</span><b>@Model.Meter.LastReading.ToString("N3") @Model.Meter.Unit</b></div>
     <div class="metric"><span>Communication</span><b>@Model.Meter.CommunicationStatus</b></div>
     <div class="metric"><span>Serial number</span><b>@Model.Meter.SerialNumber</b></div>
     <div class="metric"><span>Last reading</span><b>@(Model.Meter.LastReadingAt?.ToLocalTime().ToString("g") ?? "No recent reading")</b></div>
@@ -16,7 +16,7 @@
 
 @foreach(var chart in new[]{Model.DayChart,Model.MonthChart,Model.YearChart}){
 <section class="panel usage-chart-panel">
-    <div class="panel-title"><div><span class="eyebrow">CONSUMPTION</span><h2>@chart.Title</h2><p class="note">@(chart.Title=="Per Day"?"Hourly consumption for today":chart.Title=="Per Month"?"Daily consumption for the current month":"Monthly consumption for the current year")</p></div><div class="usage-total"><small>Total usage</small><strong>@chart.Total.ToString("N3") kWh</strong></div></div>
+    <div class="panel-title"><div><span class="eyebrow">CONSUMPTION</span><h2>@chart.Title</h2><p class="note">@(chart.Title=="Per Day"?"Hourly consumption for today":chart.Title=="Per Month"?"Daily consumption for the current month":"Monthly consumption for the current year")</p></div><div class="usage-total"><small>Total usage</small><strong>@chart.Total.ToString("N3") @Model.Meter.Unit</strong></div></div>
     @if(chart.Total == 0){<div class="meter-empty-state compact"><strong>@chart.EmptyMessage</strong><p>The chart will populate automatically as meter readings are collected.</p></div>}
     <div class="usage-chart" role="img" aria-label="@chart.Title consumption chart">
         @for(var i=0;i<chart.Bars.Count;i++){var bar=chart.Bars[i];var showLabel=i%chart.AxisStep==0;<div class="usage-column" title="@bar.Tooltip" tabindex="0" aria-label="@bar.Tooltip"><span class="usage-tooltip" role="tooltip">@bar.Tooltip</span><span class="usage-value">@(bar.Value>0?bar.Value.ToString("0.###"):"")</span><div class="usage-bar-track"><span class="usage-bar" style="height:@chart.Height(bar.Value).ToString(System.Globalization.CultureInfo.InvariantCulture)%"></span></div><span class="usage-label">@(showLabel?bar.Label:"")</span></div>}

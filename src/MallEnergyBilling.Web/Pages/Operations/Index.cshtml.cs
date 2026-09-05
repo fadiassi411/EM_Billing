@@ -42,6 +42,7 @@ public class IndexModel(ApplicationDbContext db,AppDataPaths paths,DatabaseMaint
 
   var start=AtStart(periodStart);var endExclusive=AtStart(periodEnd.AddDays(1));var issued=AtStart(invoiceDate);var due=AtStart(dueDate);
   var meters=await db.Meters.Include(x=>x.Shop).Where(x=>x.Active).OrderBy(x=>x.Id).ToListAsync();
+  var waterEnabled=await db.SystemFeatureConfigurations.AsNoTracking().AnyAsync(x=>x.Id==1&&x.WaterBillingEnabled);if(!waterEnabled)meters=meters.Where(x=>x.UtilityType!=UtilityType.Water).ToList();
   if(meters.Count==0)return BillingError("There are no active meters to bill.");
   var readings=(await db.MeterReadings.ToListAsync()).Where(x=>x.Timestamp<endExclusive).OrderBy(x=>x.Timestamp).ToList();
   var tariffs=await db.Tariffs.ToListAsync();

@@ -46,6 +46,7 @@ public sealed class InvoiceSchedulerService(IServiceScopeFactory scopes, ILogger
         static DateTimeOffset AtStart(DateOnly date){var value=date.ToDateTime(TimeOnly.MinValue);return new(value,TimeZoneInfo.Local.GetUtcOffset(value));}
         var start=AtStart(startDate); var endExclusive=AtStart(endDate.AddDays(1)); var issued=AtStart(invoiceDate); var due=AtStart(dueDate);
         var meters=await db.Meters.Include(x=>x.Shop).Where(x=>x.Active).OrderBy(x=>x.Id).ToListAsync(token);
+        var waterEnabled=await db.SystemFeatureConfigurations.AsNoTracking().AnyAsync(x=>x.Id==1&&x.WaterBillingEnabled,token);if(!waterEnabled)meters=meters.Where(x=>x.UtilityType!=UtilityType.Water).ToList();
         var readings=(await db.MeterReadings.ToListAsync(token)).Where(x=>x.Timestamp<endExclusive).OrderBy(x=>x.Timestamp).ToList();
         var tariffs=await db.Tariffs.ToListAsync(token);
         var priorInvoices=await db.Invoices.Include(x=>x.Payments).Where(x=>x.Status!=InvoiceStatus.Cancelled).ToListAsync(token);

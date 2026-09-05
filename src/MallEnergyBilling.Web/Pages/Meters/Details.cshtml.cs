@@ -37,17 +37,17 @@ public sealed class DetailsModel(ApplicationDbContext db) : PageModel
 
         var now = DateTimeOffset.Now;
         DayChart = Build("Per Day", Enumerable.Range(0, 24).Select(hour =>
-            CreateBar($"{hour:00}:00", $"Hour {hour:00}:00–{hour:00}:59", usage.Where(x => x.At.Date == now.Date && x.At.Hour == hour))).ToList(), "No readings today");
+            CreateBar($"{hour:00}:00", $"Hour {hour:00}:00–{hour:00}:59", Meter.Unit, usage.Where(x => x.At.Date == now.Date && x.At.Hour == hour))).ToList(), "No readings today");
         var days = DateTime.DaysInMonth(now.Year, now.Month);
         MonthChart = Build("Per Month", Enumerable.Range(1, days).Select(day =>
-            CreateBar(day.ToString("00"), $"{new DateTime(now.Year, now.Month, day):dd MMM yyyy}", usage.Where(x => x.At.Year == now.Year && x.At.Month == now.Month && x.At.Day == day))).ToList(), "No readings this month");
+            CreateBar(day.ToString("00"), $"{new DateTime(now.Year, now.Month, day):dd MMM yyyy}", Meter.Unit, usage.Where(x => x.At.Year == now.Year && x.At.Month == now.Month && x.At.Day == day))).ToList(), "No readings this month");
         MonthChart = MonthChart with { AxisStep = 5 };
         YearChart = Build("Per Year", Enumerable.Range(1, 12).Select(month =>
-            CreateBar(new DateTime(now.Year, month, 1).ToString("MMM"), $"{new DateTime(now.Year, month, 1):MMMM yyyy}", usage.Where(x => x.At.Year == now.Year && x.At.Month == month))).ToList(), "No readings this year");
+            CreateBar(new DateTime(now.Year, month, 1).ToString("MMM"), $"{new DateTime(now.Year, month, 1):MMMM yyyy}", Meter.Unit, usage.Where(x => x.At.Year == now.Year && x.At.Month == month))).ToList(), "No readings this year");
         return Page();
     }
 
-    static ChartBar CreateBar(string label, string period, IEnumerable<UsagePoint> source)
+    static ChartBar CreateBar(string label, string period, string unit, IEnumerable<UsagePoint> source)
     {
         var points = source.ToList();
         var value = points.Sum(x => x.Kwh);
@@ -56,7 +56,7 @@ public sealed class DetailsModel(ApplicationDbContext db) : PageModel
             .Select(x => $"{x.Key} {x.Sum(y => y.Cost!.Value):N2}")
             .ToList();
         var costText = costs.Count > 0 ? string.Join(" + ", costs) : value > 0 ? "Cost unavailable (no active tariff)" : "Cost 0.00";
-        return new(label, value, $"{period} · {value:N3} kWh · {costText}");
+        return new(label, value, $"{period} · {value:N3} {unit} · {costText}");
     }
 
     static UsageChart Build(string title, List<ChartBar> bars, string emptyMessage)
