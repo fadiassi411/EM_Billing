@@ -2,6 +2,7 @@
 @model MallEnergyBilling.Web.Pages.Admin.Shops.IndexModel
 @{ ViewData["Title"] = "Shop setup"; }
 <section class="hero compact"><div><span class="eyebrow">ADMINISTRATOR ONLY</span><h1>Shop setup</h1><p>Create a shop before assigning meter channels.</p></div><a class="button" asp-page="/Admin/Controllers/Index">Controller setup</a></section>
+@if(TempData["Message"] is string message){<div class="alert-success">@message</div>}
 <section class="panel admin-form">
  <h2>Add shop</h2>
  <form method="post">
@@ -25,4 +26,4 @@
   <button type="submit">Add shop</button>
  </form>
 </section>
-<section class="panel"><h2>Configured shops</h2><div class="table-responsive"><table><thead><tr><th>Number</th><th>Name / tenant</th><th>Location</th><th>MDB panel</th><th>Status</th></tr></thead><tbody>@if(Model.Shops.Count==0){<tr><td colspan="5">No shops configured.</td></tr>}@foreach(var shop in Model.Shops){<tr><td><b>@shop.ShopNumber</b></td><td>@shop.Name<small>@shop.TenantName</small></td><td>@shop.Floor · @shop.Zone</td><td>@shop.MdbPanel</td><td><span class="status">@shop.Status</span></td></tr>}</tbody></table></div></section>
+<section class="panel"><h2>Configured shops</h2><div class="table-responsive"><table><thead><tr><th>Number</th><th>Name / tenant</th><th>Location</th><th>MDB panel</th><th>Status</th><th></th></tr></thead><tbody>@if(Model.Shops.Count==0){<tr><td colspan="6">No shops configured.</td></tr>}@foreach(var shop in Model.Shops){<tr><td><b>@shop.ShopNumber</b></td><td>@shop.Name<small>@shop.TenantName</small></td><td>@shop.Floor · @shop.Zone</td><td>@shop.MdbPanel</td><td><span class="status">@shop.Status</span></td><td><a class="button" asp-page="Edit" asp-route-id="@shop.Id">Edit shop</a></td></tr>}</tbody></table></div></section>

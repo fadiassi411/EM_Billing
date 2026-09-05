@@ -1,0 +1,27 @@
+@page "{id:int}"
+@model MallEnergyBilling.Web.Pages.Admin.Shops.EditModel
+@{ ViewData["Title"] = "Edit shop"; }
+<section class="hero compact"><div><span class="eyebrow">ADMINISTRATOR ONLY</span><h1>Edit shop</h1><p>Update customer, contact, location and billing information without changing the shop's meter links.</p></div><a class="button" asp-page="Index">Back to shops</a></section>
+<section class="panel admin-form">
+ <form method="post">
+  <div asp-validation-summary="All" class="validation"></div>
+  <input type="hidden" asp-for="Input.Id"/>
+  <div class="form-grid">
+   <label>Shop number<input asp-for="Input.ShopNumber"/></label>
+   <label>Shop name<input asp-for="Input.Name"/></label>
+   <label>Tenant name<input asp-for="Input.TenantName"/></label>
+   <label>Floor<input asp-for="Input.Floor"/></label>
+   <label>Zone<input asp-for="Input.Zone"/></label>
+   <label>MDB panel<input asp-for="Input.MdbPanel"/></label>
+   <label>Contact person<input asp-for="Input.ContactPerson"/></label>
+   <label>Telephone<input asp-for="Input.Telephone"/></label>
+   <label>Customer email<input asp-for="Input.Email" type="email"/></label>
+   <label>Status<select asp-for="Input.Status" asp-items="Html.GetEnumSelectList<MallEnergyBilling.Web.Models.ShopStatus>()"></select></label>
+   <label>Billing address<input asp-for="Input.BillingAddress"/></label>
+   <label>Tax number<input asp-for="Input.TaxNumber"/></label>
+  </div>
+  <label>Notes (optional)<textarea asp-for="Input.Notes" rows="2"></textarea></label>
+  <label>Reason (optional)<textarea asp-for="Input.Reason" rows="2"></textarea></label>
+  <div class="btn-row"><button type="submit">Save shop changes</button><a class="button warn" asp-page="Index">Cancel</a></div>
+ </form>
+</section>

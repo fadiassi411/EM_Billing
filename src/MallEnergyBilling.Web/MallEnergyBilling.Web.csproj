@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>aspnet-MallEnergyBilling.Web-b9f01abe-f1c0-4aab-8ecc-68e4eb3a1a43</UserSecretsId>
     <ApplicationIcon>..\..\Watch Dog.ico</ApplicationIcon>
-    <Version>1.8.0</Version>
+    <Version>1.8.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
