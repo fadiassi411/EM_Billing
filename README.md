@@ -4,7 +4,7 @@ Watch Dog EM — Watch Every Watt. Local web-based energy metering and shop bill
 
 ## Customer installation
 
-1. Download the Watch Dog EM v1.8.1 Windows package from the latest GitHub release.
+1. Download the Watch Dog EM v1.8.2 Windows package from the latest GitHub release.
 2. Run the installer and approve the Windows administrator prompt.
 3. Keep the default desktop shortcut selected.
 4. The **Watch Dog EM Server** Windows Service starts automatically. Double-click **Watch Dog EM** to open the dashboard.
