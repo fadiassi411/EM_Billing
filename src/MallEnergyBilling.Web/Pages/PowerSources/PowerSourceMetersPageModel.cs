@@ -12,7 +12,6 @@ public abstract class PowerSourceMetersPageModel(ApplicationDbContext db, PowerS
     public string Search { get; set; } = "";
 
     public IReadOnlyList<Meter> Meters { get; private set; } = [];
-    public IReadOnlyDictionary<int, Tariff> CurrentTariffByMeter { get; private set; } = new Dictionary<int, Tariff>();
     public PowerSource Source { get; } = source;
     public string Title => Source == PowerSource.Grid ? "Grid" : "Generator";
     public string Description => Source == PowerSource.Grid
@@ -36,12 +35,6 @@ public abstract class PowerSourceMetersPageModel(ApplicationDbContext db, PowerS
 
         Search = term ?? "";
         Meters = meters;
-        var meterIds = meters.Select(x => x.Id).ToHashSet();
-        var tariffs = (await db.Tariffs.AsNoTracking().ToListAsync())
-            .Where(x => x.MeterId.HasValue && meterIds.Contains(x.MeterId.Value) && x.EffectiveFrom <= DateTimeOffset.UtcNow)
-            .GroupBy(x => x.MeterId!.Value)
-            .Select(x => x.OrderByDescending(t => t.EffectiveFrom).First());
-        CurrentTariffByMeter = tariffs.ToDictionary(x => x.MeterId!.Value);
     }
 
     public static bool MeterMatchesSearch(Meter meter, string term)
