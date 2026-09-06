@@ -4,7 +4,7 @@
 <section class="hero compact"><div><span class="eyebrow">ADMINISTRATOR ONLY</span><h1>Invoice email</h1><p>Optionally send published PDF invoices through the customer's SMTP provider.</p></div></section>
 <section class="panel admin-form">
     <h2>SMTP configuration</h2>
-    <p class="note">Disabled by default. Save and test the provider settings before enabling customer delivery. The password is encrypted for this Windows installation and is never displayed again.</p>
+    <p class="note">Disabled by default. The password is encrypted for this Windows installation and is never displayed again. After a successful test, the settings and password are saved automatically.</p>
     @if(TempData["EmailSuccess"] is string success){<div class="alert-success">@success</div>}
     <form method="post">
         <div asp-validation-summary="All" class="validation"></div>
@@ -21,6 +21,6 @@
             <label>Test recipient<input asp-for="Input.TestRecipient" placeholder="your-email@example.com"/></label>
         </div>
         <p class="note"><strong>Global control:</strong> turn on both switches to email every customer automatically at the end of the billing period. Turn off automatic delivery to keep the manual email button only, or turn off PDF invoice email to disable all sending.</p>
-        <div class="btn-row"><button asp-page-handler="Save">Save SMTP settings</button><button asp-page-handler="Test" class="button">Send test email</button></div>
+        <div class="btn-row"><button asp-page-handler="Save">Save SMTP settings</button><button asp-page-handler="Test" class="button">Save and send test email</button></div>
     </form>
 </section>

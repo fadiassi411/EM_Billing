@@ -59,16 +59,29 @@ public sealed class IndexModel(ApplicationDbContext db, InvoiceEmailService emai
 
     public async Task<IActionResult> OnPostTestAsync()
     {
-        var saved = await db.SmtpConfigurations.AsNoTracking().SingleOrDefaultAsync();
+        var saved = await db.SmtpConfigurations.SingleOrDefaultAsync();
         PasswordSaved = !string.IsNullOrWhiteSpace(saved?.ProtectedPassword);
         ValidateConfiguration(requireRecipient: true, PasswordSaved);
         if (!ModelState.IsValid) return Page();
         var candidate = new SmtpConfiguration { Host=Input.Host.Trim(),Port=Input.Port,EnableSsl=Input.EnableSsl,Username=Input.Username.Trim(),FromEmail=Input.FromEmail.Trim(),FromName=string.IsNullOrWhiteSpace(Input.FromName)?"Watch Dog EM":Input.FromName.Trim() };
-        var password = string.IsNullOrWhiteSpace(Input.Password) && saved is not null ? email.UnprotectPassword(saved.ProtectedPassword) : Input.Password;
+        string password;
+        try { password = string.IsNullOrWhiteSpace(Input.Password) && saved is not null ? email.UnprotectPassword(saved.ProtectedPassword) : Input.Password; }
+        catch
+        {
+            ModelState.AddModelError("Input.Password", "The saved SMTP password cannot be opened on this Windows installation. Enter the app password once, then test again.");
+            return Page();
+        }
         try
         {
             await email.SendTestAsync(candidate, password, Input.TestRecipient);
-            TempData["EmailSuccess"] = $"Test email sent to {Input.TestRecipient.Trim()}. Save the settings to activate invoice email.";
+            saved ??= new SmtpConfiguration { Id = 1 };
+            if (db.Entry(saved).State == EntityState.Detached) db.SmtpConfigurations.Add(saved);
+            saved.Enabled=Input.Enabled;saved.AutoSendPublishedInvoices=Input.Enabled&&Input.AutoSendPublishedInvoices;saved.Host=candidate.Host;saved.Port=candidate.Port;saved.EnableSsl=candidate.EnableSsl;saved.Username=candidate.Username;saved.FromEmail=candidate.FromEmail;saved.FromName=candidate.FromName;saved.UpdatedAt=DateTimeOffset.UtcNow;saved.UpdatedBy=User.Identity?.Name??"Administrator";
+            if (!string.IsNullOrWhiteSpace(Input.Password)) saved.ProtectedPassword=email.ProtectPassword(Input.Password);
+            db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=saved.UpdatedBy,Action="SMTP configuration tested and saved",EntityType="SmtpConfiguration",EntityId="1",NewValue=$"Enabled={saved.Enabled}; Automatic={saved.AutoSendPublishedInvoices}; Host={saved.Host}; Port={saved.Port}; SSL={saved.EnableSsl}; From={saved.FromEmail}",Reason="Successful SMTP test",SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});
+            await db.SaveChangesAsync();
+            PasswordSaved = true;
+            TempData["EmailSuccess"] = $"Test email sent to {Input.TestRecipient.Trim()}. SMTP settings and the encrypted password are now saved.";
         }
         catch (Exception ex)
         {
