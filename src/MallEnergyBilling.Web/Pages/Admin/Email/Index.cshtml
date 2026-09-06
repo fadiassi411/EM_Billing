@@ -19,6 +19,7 @@
             <label>Sender email<input asp-for="Input.FromEmail" placeholder="billing@example.com"/></label>
             <label>Sender name<input asp-for="Input.FromName"/></label>
             <label>Test recipient<input asp-for="Input.TestRecipient" placeholder="your-email@example.com"/></label>
+            <label class="form-grid-wide">Standard email message<textarea asp-for="Input.EmailMessage" rows="4" placeholder="Write the standard message included in every invoice email"></textarea><small>“Dear customer” and the invoice number, total, due date and PDF attachment are added automatically.</small></label>
         </div>
         <p class="note"><strong>Global control:</strong> turn on both switches to email every customer automatically at the end of the billing period. Turn off automatic delivery to keep the manual email button only, or turn off PDF invoice email to disable all sending.</p>
         <div class="btn-row"><button asp-page-handler="Save">Save SMTP settings</button><button asp-page-handler="Test" class="button">Save and send test email</button></div>

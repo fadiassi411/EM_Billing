@@ -27,7 +27,7 @@ public sealed class InvoiceEmailService(ApplicationDbContext db, InvoicePdfServi
         {
             From = new MailAddress(settings.FromEmail, settings.FromName),
             Subject = $"Energy invoice {invoice.InvoiceNumber} - {invoice.Shop?.Name}",
-            Body = BuildBody(invoice),
+            Body = BuildBody(invoice, settings.EmailMessage),
             IsBodyHtml = true
         };
         message.To.Add(recipient.Trim());
@@ -45,8 +45,8 @@ public sealed class InvoiceEmailService(ApplicationDbContext db, InvoicePdfServi
         {
             From = new MailAddress(settings.FromEmail, settings.FromName),
             Subject = "Watch Dog EM SMTP test",
-            Body = "Watch Dog EM connected to this SMTP server successfully.",
-            IsBodyHtml = false
+            Body = BuildTestBody(settings.EmailMessage),
+            IsBodyHtml = true
         };
         message.To.Add(recipient.Trim());
         using var client = BuildClient(settings, password);
@@ -67,14 +67,23 @@ public sealed class InvoiceEmailService(ApplicationDbContext db, InvoicePdfServi
         return client;
     }
 
-    private static string BuildBody(Invoice invoice)
+    private static string BuildBody(Invoice invoice, string standardMessage)
     {
         var shop = HtmlEncoder.Default.Encode(invoice.Shop?.Name ?? "Customer");
         var number = HtmlEncoder.Default.Encode(invoice.InvoiceNumber);
         var currency = HtmlEncoder.Default.Encode(invoice.Currency);
-        return $"<p>Dear {shop},</p><p>Your energy invoice <strong>{number}</strong> is attached as a PDF.</p>" +
+        var message = FormatMessage(standardMessage);
+        return $"<p>Dear customer,</p><p>{message}</p><p>Invoice <strong>{number}</strong> for {shop} is attached as a PDF.</p>" +
                $"<p>Total due: <strong>{currency} {invoice.Total:N2}</strong><br>Due date: {invoice.DueDate:dd MMM yyyy}</p>" +
                "<p>Regards,<br>Watch Dog EM</p>";
+    }
+
+    private static string BuildTestBody(string standardMessage) => $"<p>Dear customer,</p><p>{FormatMessage(standardMessage)}</p><p><em>This is a Watch Dog EM SMTP test. No invoice is attached.</em></p>";
+
+    private static string FormatMessage(string message)
+    {
+        var value = string.IsNullOrWhiteSpace(message) ? "Please find your utility invoice attached. Thank you for your business." : message.Trim();
+        return HtmlEncoder.Default.Encode(value).Replace("\r\n", "<br>").Replace("\n", "<br>");
     }
 
     private static void ValidateRecipient(string recipient)
