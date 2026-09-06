@@ -21,7 +21,7 @@ public sealed class IndexModel(ApplicationDbContext db, InvoiceEmailService emai
         [Range(1, 65535)] public int Port { get; set; } = 587;
         public bool EnableSsl { get; set; } = true;
         public string Username { get; set; } = "";
-        [DataType(DataType.Password)] public string Password { get; set; } = "";
+        [DataType(DataType.Password)] public string? Password { get; set; }
         [EmailAddress] public string FromEmail { get; set; } = "";
         public string FromName { get; set; } = "Watch Dog EM";
         [EmailAddress] public string TestRecipient { get; set; } = "";
@@ -65,7 +65,7 @@ public sealed class IndexModel(ApplicationDbContext db, InvoiceEmailService emai
         if (!ModelState.IsValid) return Page();
         var candidate = new SmtpConfiguration { Host=Input.Host.Trim(),Port=Input.Port,EnableSsl=Input.EnableSsl,Username=Input.Username.Trim(),FromEmail=Input.FromEmail.Trim(),FromName=string.IsNullOrWhiteSpace(Input.FromName)?"Watch Dog EM":Input.FromName.Trim() };
         string password;
-        try { password = string.IsNullOrWhiteSpace(Input.Password) && saved is not null ? email.UnprotectPassword(saved.ProtectedPassword) : Input.Password; }
+        try { password = string.IsNullOrWhiteSpace(Input.Password) && saved is not null ? email.UnprotectPassword(saved.ProtectedPassword) : Input.Password ?? ""; }
         catch
         {
             ModelState.AddModelError("Input.Password", "The saved SMTP password cannot be opened on this Windows installation. Enter the app password once, then test again.");
