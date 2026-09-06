@@ -3,8 +3,9 @@ param([Parameter(Mandatory = $true)][string]$InstallDirectory)
 $ErrorActionPreference = 'Stop'
 $serviceName = 'WatchDogEM'
 $displayName = 'Watch Dog EM Server'
+$firewallRuleName = 'Watch Dog EM (TCP 5080)'
 $executable = Join-Path $InstallDirectory 'MallEnergyBilling.Web.exe'
-$binaryPath = '"' + $executable + '" --urls http://localhost:5080'
+$binaryPath = '"' + $executable + '" --urls http://0.0.0.0:5080'
 
 $existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
 if ($existing) {
@@ -30,5 +31,10 @@ else {
 $keyDirectory = Join-Path $env:ProgramData 'Watch Dog EM\Keys'
 New-Item -ItemType Directory -Force -Path $keyDirectory | Out-Null
 & icacls.exe $keyDirectory /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
+
+# Allow browser clients on the local network to reach the Watch Dog web server.
+Get-NetFirewallRule -DisplayName $firewallRuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+New-NetFirewallRule -DisplayName $firewallRuleName -Direction Inbound -Action Allow `
+    -Protocol TCP -LocalPort 5080 -Profile Any | Out-Null
 
 Start-Service -Name $serviceName

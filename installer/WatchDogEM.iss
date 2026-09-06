@@ -1,5 +1,5 @@
 #define MyAppName "Watch Dog EM"
-#define MyAppVersion "2.1.3"
+#define MyAppVersion "2.2.1"
 #define MyAppPublisher "MicroBrain"
 #define MyAppExeName "MallEnergyBilling.Web.exe"
 

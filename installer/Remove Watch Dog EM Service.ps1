@@ -1,7 +1,10 @@
 $serviceName = 'WatchDogEM'
+$firewallRuleName = 'Watch Dog EM (TCP 5080)'
 $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-if (-not $service) { exit 0 }
-if ($service.Status -ne 'Stopped') {
-    Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+if ($service) {
+    if ($service.Status -ne 'Stopped') {
+        Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+    }
+    & sc.exe delete $serviceName | Out-Null
 }
-& sc.exe delete $serviceName | Out-Null
+Get-NetFirewallRule -DisplayName $firewallRuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule

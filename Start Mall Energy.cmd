@@ -11,7 +11,7 @@ if not errorlevel 1 (
 )
 start "" powershell.exe -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 3; Start-Process 'http://localhost:5080'"
 set "ASPNETCORE_ENVIRONMENT=Development"
-dotnet run --configuration Release --no-build --no-restore --no-launch-profile --project "src\MallEnergyBilling.Web\MallEnergyBilling.Web.csproj" --urls "http://localhost:5080"
+dotnet run --configuration Release --no-build --no-restore --no-launch-profile --project "src\MallEnergyBilling.Web\MallEnergyBilling.Web.csproj" --urls "http://0.0.0.0:5080"
 echo.
 echo Watch Dog EM stopped or could not start. Review the message above.
 pause
