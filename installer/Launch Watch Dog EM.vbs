@@ -23,7 +23,7 @@ For attempt = 1 To 40
     End If
 Next
 
-MsgBox "The Watch Dog EM Server is not running. Restart Windows or ask an administrator to start the 'Watch Dog EM Server' service.", 16, "Watch Dog EM"
+MsgBox "The Watchdog Energy Management Server is not running. Restart Windows or ask an administrator to start the 'Watchdog Energy Management Server' service.", 16, "Watchdog Energy Management"
 WScript.Quit 1
 
 Function IsRunning(address)

@@ -15,7 +15,7 @@
  <form method="post" asp-page-handler="ScheduleInvoices" class="admin-form billing-form">
   <h3>Automatic invoice generation</h3>
   <div class="form-grid"><label>Generate invoices on<input type="datetime-local" name="generateAt" required/></label><label>Payment due after (days)<input type="number" name="dueDays" min="0" max="365" value="10" required/></label></div>
-  <p class="note">At this date and time, the system automatically creates draft invoices for every active meter for the previous completed calendar month. Keep Watch Dog EM running.</p>
+  <p class="note">At this date and time, the system automatically creates draft invoices for every active meter for the previous completed calendar month. Keep Watchdog Energy Management running.</p>
   <button>Schedule invoice generation</button>
  </form>
  @if(Model.InvoiceSchedules.Count>0){<div class="table-responsive"><table><thead><tr><th>Generation date/time</th><th>Period</th><th>Status</th><th>Result</th></tr></thead><tbody>@foreach(var schedule in Model.InvoiceSchedules){var run=schedule.GenerateAt.ToLocalTime();var end=new DateOnly(run.Year,run.Month,1).AddDays(-1);<tr><td>@run.ToString("dd MMM yyyy h:mm tt")</td><td>@end.ToString("MMMM yyyy")</td><td><span class="status">@(schedule.Completed?"Completed":"Scheduled")</span></td><td>@schedule.Result</td></tr>}</tbody></table></div>}

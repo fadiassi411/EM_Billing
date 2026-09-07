@@ -1,7 +1,7 @@
 ﻿// Please see documentation at https://learn.microsoft.com/aspnet/core/client-side/bundling-and-minification
 // for details on configuring this project to bundle and minify static web assets.
 
-// Show the Watch Dog EM startup identity once per browser tab.
+// Show the Watchdog Energy Management startup identity once per browser tab.
 document.addEventListener("DOMContentLoaded", () => {
     const splash = document.getElementById("startupSplash");
     if (!splash || document.documentElement.classList.contains("splash-seen")) return;
@@ -13,7 +13,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 5000);
 });
 
-// About Watch Dog is available from the Main menu without leaving the current page.
+// About Watchdog is available from the Main menu without leaving the current page.
 document.addEventListener("DOMContentLoaded", () => {
     const dialog = document.getElementById("aboutWatchDog");
     if (!dialog) return;

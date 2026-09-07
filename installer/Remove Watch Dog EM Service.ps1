@@ -1,5 +1,6 @@
 $serviceName = 'WatchDogEM'
-$firewallRuleName = 'Watch Dog EM (TCP 5080)'
+$firewallRuleName = 'Watchdog Energy Management (TCP 5080)'
+$legacyFirewallRuleName = 'Watch Dog EM (TCP 5080)'
 $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
 if ($service) {
     if ($service.Status -ne 'Stopped') {
@@ -8,3 +9,4 @@ if ($service) {
     & sc.exe delete $serviceName | Out-Null
 }
 Get-NetFirewallRule -DisplayName $firewallRuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+Get-NetFirewallRule -DisplayName $legacyFirewallRuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule

@@ -44,7 +44,7 @@ public sealed class InvoiceEmailService(ApplicationDbContext db, InvoicePdfServi
         using var message = new MailMessage
         {
             From = new MailAddress(settings.FromEmail, settings.FromName),
-            Subject = "Watch Dog EM SMTP test",
+            Subject = "Watchdog Energy Management SMTP test",
             Body = BuildTestBody(settings.EmailMessage),
             IsBodyHtml = true
         };
@@ -75,10 +75,10 @@ public sealed class InvoiceEmailService(ApplicationDbContext db, InvoicePdfServi
         var message = FormatMessage(standardMessage);
         return $"<p>Dear customer,</p><p>{message}</p><p>Invoice <strong>{number}</strong> for {shop} is attached as a PDF.</p>" +
                $"<p>Total due: <strong>{currency} {invoice.Total:N2}</strong><br>Due date: {invoice.DueDate:dd MMM yyyy}</p>" +
-               "<p>Regards,<br>Watch Dog EM</p>";
+               "<p>Regards,<br>Watchdog Energy Management</p>";
     }
 
-    private static string BuildTestBody(string standardMessage) => $"<p>Dear customer,</p><p>{FormatMessage(standardMessage)}</p><p><em>This is a Watch Dog EM SMTP test. No invoice is attached.</em></p>";
+    private static string BuildTestBody(string standardMessage) => $"<p>Dear customer,</p><p>{FormatMessage(standardMessage)}</p><p><em>This is a Watchdog Energy Management SMTP test. No invoice is attached.</em></p>";
 
     private static string FormatMessage(string message)
     {

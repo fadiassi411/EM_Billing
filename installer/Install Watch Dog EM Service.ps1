@@ -2,8 +2,9 @@ param([Parameter(Mandatory = $true)][string]$InstallDirectory)
 
 $ErrorActionPreference = 'Stop'
 $serviceName = 'WatchDogEM'
-$displayName = 'Watch Dog EM Server'
-$firewallRuleName = 'Watch Dog EM (TCP 5080)'
+$displayName = 'Watchdog Energy Management Server'
+$firewallRuleName = 'Watchdog Energy Management (TCP 5080)'
+$legacyFirewallRuleName = 'Watch Dog EM (TCP 5080)'
 $executable = Join-Path $InstallDirectory 'MallEnergyBilling.Web.exe'
 $binaryPath = '"' + $executable + '" --urls http://0.0.0.0:5080'
 
@@ -17,7 +18,7 @@ if ($existing) {
 }
 else {
     New-Service -Name $serviceName -BinaryPathName $binaryPath -DisplayName $displayName `
-        -Description 'Watch Dog EM web, Modbus polling, backup, and invoice services.' `
+        -Description 'Watchdog Energy Management web, Modbus polling, backup, and invoice services.' `
         -StartupType Automatic | Out-Null
     & sc.exe config $serviceName start= delayed-auto | Out-Null
 }
@@ -32,8 +33,9 @@ $keyDirectory = Join-Path $env:ProgramData 'Watch Dog EM\Keys'
 New-Item -ItemType Directory -Force -Path $keyDirectory | Out-Null
 & icacls.exe $keyDirectory /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
 
-# Allow browser clients on the local network to reach the Watch Dog web server.
+# Allow browser clients on the local network to reach the Watchdog web server.
 Get-NetFirewallRule -DisplayName $firewallRuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+Get-NetFirewallRule -DisplayName $legacyFirewallRuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 New-NetFirewallRule -DisplayName $firewallRuleName -Direction Inbound -Action Allow `
     -Protocol TCP -LocalPort 5080 -Profile Any | Out-Null
 

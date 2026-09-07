@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Host.UseWindowsService(options => options.ServiceName = "Watch Dog EM Server");
+builder.Host.UseWindowsService(options => options.ServiceName = "Watchdog Energy Management Server");
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 var configuredDataDirectory = builder.Configuration["Storage:DataDirectory"];
@@ -84,6 +84,12 @@ using (var scope = app.Services.CreateScope())
 {
     var database = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     await SeedData.InitializeAsync(database);
+    var smtpConfiguration = await database.SmtpConfigurations.FindAsync(1);
+    if (smtpConfiguration?.FromName == "Watch Dog EM")
+    {
+        smtpConfiguration.FromName = "Watchdog Energy Management";
+        await database.SaveChangesAsync();
+    }
     var firstMeterId = await database.Meters.OrderBy(x => x.Id).Select(x => (int?)x.Id).FirstOrDefaultAsync();
     if (firstMeterId is not null)
     {
@@ -99,7 +105,7 @@ app.Run();
 
 static void MigratePreviousBrandData(string commonDataDirectory, string destinationDirectory)
 {
-    // Keep version 1.0 customer data during the Watch Dog EM rebrand.
+    // Keep version 1.0 customer data during the Watchdog Energy Management rebrand.
     var previousDirectory = Path.Combine(commonDataDirectory, string.Concat("Black", "Dog EM"));
     var previousDatabase = Path.Combine(previousDirectory, "app.db");
     var destinationDatabase = Path.Combine(destinationDirectory, "app.db");
