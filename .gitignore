@@ -26,6 +26,8 @@ TestResults/
 document-build/
 doc-build-commissioning/
 presentation-build/
+private-license-authority/
+*.wdlicense
 
 # Operating system files
 .DS_Store

@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\MallEnergyBilling.Web\MallEnergyBilling.Web.csproj" />
+    <ProjectReference Include="..\..\src\Watchdog.Licensing\Watchdog.Licensing.csproj" />
   </ItemGroup>
 
 </Project>

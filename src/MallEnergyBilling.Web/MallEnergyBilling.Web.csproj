@@ -10,6 +10,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Watchdog.Licensing\Watchdog.Licensing.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="Deployment\Start Mall Energy.cmd" Link="Start Mall Energy.cmd" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 

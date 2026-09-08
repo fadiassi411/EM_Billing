@@ -1,0 +1,59 @@
+@page
+@model MallEnergyBilling.Web.Pages.Admin.License.IndexModel
+@{ ViewData["Title"] = "License"; var s = Model.LicenseStatus; }
+
+<section class="hero compact">
+  <div><span class="eyebrow">ADMINISTRATOR ONLY</span><h1>License</h1><p>Activate this main Watchdog installation with a digitally signed offline license.</p></div>
+</section>
+
+@if (TempData["LicenseSuccess"] is string success) { <div class="alert-success">@success</div> }
+
+<section class="panel license-panel">
+  <div class="license-heading">
+    <div><span class="eyebrow">LICENSE STATUS</span><h2>@s.Status</h2></div>
+    <span class="license-badge @(s.IsLicensed && s.IsValid ? "licensed" : s.IsValid ? "free" : "invalid")">@(s.IsLicensed && s.IsValid ? "Commercial license" : s.IsValid ? "Free mode" : "Attention required")</span>
+  </div>
+  @if (s.Error is not null) { <div class="alert-error">@s.Error Free mode is currently applied.</div> }
+  @if (s.IsOverLimit) { <div class="alert-error">There are @s.ActiveMeters active meters, above the current @s.MaximumMeters-meter allowance. Existing data is preserved, but additional meters cannot be activated.</div> }
+  <div class="license-stats">
+    <div><span>Active meters</span><strong>@s.ActiveMeters</strong></div>
+    <div><span>Meter allowance</span><strong>@s.MaximumMeters</strong></div>
+    <div><span>Available</span><strong>@s.RemainingMeters</strong></div>
+  </div>
+  <dl class="license-details">
+    <div><dt>Installation ID</dt><dd><code id="installationId">@s.InstallationId</code> <button type="button" class="button secondary compact-button" data-copy-installation>Copy</button></dd></div>
+    <div><dt>Customer</dt><dd>@(s.License?.CustomerName ?? "Not licensed")</dd></div>
+    <div><dt>Edition</dt><dd>@(s.License?.Edition ?? "Free")</dd></div>
+    <div><dt>License ID</dt><dd>@(s.License?.LicenseId.ToString() ?? "—")</dd></div>
+    <div><dt>Issued</dt><dd>@(s.License is null ? "—" : s.License.IssuedAtUtc.ToLocalTime().ToString("dd MMM yyyy HH:mm"))</dd></div>
+    <div><dt>Expires</dt><dd>@(s.License?.ExpiresAtUtc is null ? "Never" : s.License.ExpiresAtUtc.Value.ToLocalTime().ToString("dd MMM yyyy"))</dd></div>
+  </dl>
+</section>
+
+<section class="panel admin-form">
+  <h2>Import license</h2>
+  <p class="note">Send the Installation ID above to MicroBrain. Import the signed <strong>.wdlicense</strong> file you receive. The main PC does not need internet access.</p>
+  <form method="post" enctype="multipart/form-data" asp-page-handler="Import">
+    <div asp-validation-summary="All" class="validation"></div>
+    <label>License file<input asp-for="LicenseFile" type="file" accept=".wdlicense,application/json" /></label>
+    <button type="submit">Import and activate license</button>
+  </form>
+  @if (s.IsLicensed)
+  {
+    <form method="post" asp-page-handler="Remove" class="license-remove" onsubmit="return confirm('Are you sure you want to remove this license? Free mode will allow 5 active meters.');">
+      <button type="submit" class="danger">Remove license</button>
+    </form>
+  }
+</section>
+
+<script>
+document.querySelector('[data-copy-installation]')?.addEventListener('click', async function () {
+  const value = document.getElementById('installationId').textContent.trim();
+  try { await navigator.clipboard.writeText(value); }
+  catch {
+    const field = document.createElement('textarea'); field.value = value; document.body.appendChild(field);
+    field.select(); document.execCommand('copy'); field.remove();
+  }
+  this.textContent = 'Copied';
+});
+</script>
