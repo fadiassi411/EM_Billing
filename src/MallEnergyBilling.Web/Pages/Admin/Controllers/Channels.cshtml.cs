@@ -14,6 +14,9 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
     public List<Shop> Shops { get; private set; } = [];
     [BindProperty, Range(0, 65535)] public int FirstRegister { get; set; } = 4196;
     [BindProperty, Range(1, 100)] public int RegisterStride { get; set; } = 2;
+    [BindProperty] public string BacnetObjectType { get; set; } = "AnalogInput";
+    [BindProperty, Range(0, 4194303)] public int FirstBacnetObjectInstance { get; set; }
+    [BindProperty, Range(1, 1000)] public int BacnetObjectStride { get; set; } = 1;
     [BindProperty, Range(1, 45)] public int ChannelCount { get; set; } = 45;
     [BindProperty] public RegisterDataType DataType { get; set; } = RegisterDataType.UInt32;
     [BindProperty] public WordOrder WordOrder { get; set; } = WordOrder.LowHigh;
@@ -31,23 +34,29 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
         if (!await Load(id)) return NotFound();
         if (!await db.Shops.AnyAsync(x => x.Id == ShopId)) ModelState.AddModelError(nameof(ShopId), "Select a temporary or final shop assignment.");
         if (Meters.Count + ChannelCount > 45) ModelState.AddModelError(nameof(ChannelCount), $"This controller already has {Meters.Count} channels; maximum is 45.");
+        var isBacnet = Controller.CommunicationType == "BacnetIp";
         var lastRegister = FirstRegister + (ChannelCount - 1) * RegisterStride;
-        if (lastRegister > 65535) ModelState.AddModelError(nameof(FirstRegister), "The generated register range exceeds 65535.");
+        if (!isBacnet && lastRegister > 65535) ModelState.AddModelError(nameof(FirstRegister), "The generated register range exceeds 65535.");
+        var lastObject = FirstBacnetObjectInstance + (ChannelCount - 1) * BacnetObjectStride;
+        if (isBacnet && lastObject > 4194303) ModelState.AddModelError(nameof(FirstBacnetObjectInstance), "The generated BACnet object range exceeds 4194303.");
         if (!ModelState.IsValid) return Page();
         var existingRegisters = Meters.Select(x => x.StartingRegister).ToHashSet();
+        var existingObjects = Meters.Select(x => $"{x.BacnetObjectType}:{x.BacnetObjectInstance}").ToHashSet(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < ChannelCount; i++)
         {
             var register = FirstRegister + i * RegisterStride;
-            if (existingRegisters.Contains(register)) { ModelState.AddModelError("", $"Register {register} is already assigned on this controller."); return Page(); }
+            var objectInstance = FirstBacnetObjectInstance + i * BacnetObjectStride;
+            if (!isBacnet && existingRegisters.Contains(register)) { ModelState.AddModelError("", $"Register {register} is already assigned on this controller."); return Page(); }
+            if (isBacnet && existingObjects.Contains($"{BacnetObjectType}:{objectInstance}")) { ModelState.AddModelError("", $"BACnet object {BacnetObjectType}:{objectInstance} is already assigned on this controller."); return Page(); }
         }
         var startChannel = Meters.Count + 1;
         for (var i = 0; i < ChannelCount; i++)
         {
             var channel = startChannel + i;
             var serial = i == 0 && !string.IsNullOrWhiteSpace(FirstMeterSerial) ? FirstMeterSerial.Trim() : $"PENDING-{Controller.Id}-{channel:00}-{Guid.NewGuid():N}";
-            db.Meters.Add(new Meter { ControllerId=id, ShopId=ShopId, Name=$"{(string.IsNullOrWhiteSpace(MeterNamePrefix)?"Meter":MeterNamePrefix.Trim())}-{channel:00}", SerialNumber=serial, UtilityType=UtilityType, PowerSource=PowerSource, StartingRegister=FirstRegister+i*RegisterStride, DataType=DataType, WordOrder=WordOrder, ScalingFactor=ScalingFactor, PulseConstant=1600, Active=false, CommunicationStatus="Not commissioned", Notes="Generated channel; replace pending serial number before activation." });
+            db.Meters.Add(new Meter { ControllerId=id, ShopId=ShopId, Name=$"{(string.IsNullOrWhiteSpace(MeterNamePrefix)?"Meter":MeterNamePrefix.Trim())}-{channel:00}", SerialNumber=serial, UtilityType=UtilityType, PowerSource=PowerSource, StartingRegister=FirstRegister+i*RegisterStride, BacnetObjectType=BacnetObjectType, BacnetObjectInstance=FirstBacnetObjectInstance+i*BacnetObjectStride, DataType=DataType, WordOrder=WordOrder, ScalingFactor=ScalingFactor, PulseConstant=1600, Active=false, CommunicationStatus="Not commissioned", Notes="Generated channel; replace pending serial number before activation." });
         }
-        db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=User.Identity?.Name??"Administrator",Action="Controller channels generated",EntityType="Controller",EntityId=id.ToString(),NewValue=$"{ChannelCount} {UtilityType} channels; source {PowerSource}; first register {FirstRegister}; stride {RegisterStride}; {DataType}; scale {ScalingFactor}",Reason=string.IsNullOrWhiteSpace(Reason)?"Not provided":Reason.Trim(),SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});
+        db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=User.Identity?.Name??"Administrator",Action="Controller channels generated",EntityType="Controller",EntityId=id.ToString(),NewValue=isBacnet?$"{ChannelCount} {UtilityType} channels; source {PowerSource}; BACnet {BacnetObjectType} from {FirstBacnetObjectInstance}; stride {BacnetObjectStride}; scale {ScalingFactor}":$"{ChannelCount} {UtilityType} channels; source {PowerSource}; first register {FirstRegister}; stride {RegisterStride}; {DataType}; scale {ScalingFactor}",Reason=string.IsNullOrWhiteSpace(Reason)?"Not provided":Reason.Trim(),SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});
         await db.SaveChangesAsync(); return RedirectToPage(new { id });
     }
     public async Task<IActionResult> OnPostDeleteAsync(int id, int meterId)

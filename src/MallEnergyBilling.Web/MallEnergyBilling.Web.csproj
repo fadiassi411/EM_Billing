@@ -6,10 +6,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>aspnet-MallEnergyBilling.Web-b9f01abe-f1c0-4aab-8ecc-68e4eb3a1a43</UserSecretsId>
     <ApplicationIcon>..\..\Watch Dog.ico</ApplicationIcon>
-    <Version>2.3.1</Version>
+    <Version>2.4.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="BACnet" Version="4.0.0" />
     <ProjectReference Include="..\Watchdog.Licensing\Watchdog.Licensing.csproj" />
   </ItemGroup>
 

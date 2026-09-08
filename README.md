@@ -4,7 +4,7 @@ Watchdog Energy Management — Watch Every Watt. Local web-based energy metering
 
 ## Customer installation
 
-1. Download the Watchdog Energy Management v2.3.1 Windows package from the latest GitHub release.
+1. Download the Watchdog Energy Management v2.4.0 Windows package from the latest GitHub release.
 2. Run the installer and approve the Windows administrator prompt.
 3. Keep the default desktop shortcut selected.
 4. The **Watchdog Energy Management Server** Windows Service starts automatically. Double-click **Watchdog Energy Management** to open the dashboard.

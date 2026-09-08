@@ -1,6 +1,6 @@
 @inject MallEnergyBilling.Web.Services.SystemFeatureService Features
 @using System.Reflection
-@{var waterBillingEnabled=await Features.WaterBillingEnabledAsync();var appVersion=typeof(MallEnergyBilling.Web.Pages.IndexModel).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0]??"2.3.1";}
+@{var waterBillingEnabled=await Features.WaterBillingEnabledAsync();var appVersion=typeof(MallEnergyBilling.Web.Pages.IndexModel).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0]??"2.4.0";}
 <!doctype html>
 <html lang="en">
 <head>
