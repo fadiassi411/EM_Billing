@@ -225,10 +225,18 @@ public sealed class MainForm : Form
     private static string DefaultPrivateKey()
     {
         var parent = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "watchdog-license-private.pem"));
-        return File.Exists(parent) ? parent : Path.Combine(AppContext.BaseDirectory, "watchdog-license-private.pem");
+        if (File.Exists(parent)) return parent;
+        var beside = Path.Combine(AppContext.BaseDirectory, "watchdog-license-private.pem");
+        return File.Exists(beside) ? beside : string.Empty;
     }
 
-    private static string DefaultOutputFolder() => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "issued"));
+    private static string DefaultOutputFolder()
+    {
+        var parentKey = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "watchdog-license-private.pem"));
+        return File.Exists(parentKey)
+            ? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "issued"))
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Watchdog Licenses");
+    }
     private static string SettingsPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MicroBrain", "WatchdogLicenseManager", "settings.json");
     private sealed record Settings(string PrivateKeyPath = "", string OutputFolder = "");
 }
