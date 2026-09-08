@@ -62,5 +62,53 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
         db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=User.Identity?.Name??"Administrator",Action="Meter channel deleted",EntityType="Meter",EntityId=meterId.ToString(),OldValue=$"{meter.Name}; {meter.SerialNumber}; register {meter.StartingRegister}",Reason="Administrator confirmed channel deletion",SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});
         db.Meters.Remove(meter); await db.SaveChangesAsync(); TempData["Success"]=$"Channel {meter.Name} was deleted."; return RedirectToPage(new { id });
     }
+    public async Task<IActionResult> OnPostArchiveAsync(int id, int meterId)
+    {
+        if (!User.IsInRole("Administrator")) return Forbid();
+        var meter = await db.Meters.FirstOrDefaultAsync(x => x.Id == meterId && x.ControllerId == id);
+        if (meter is null) return NotFound();
+        meter.Active = false;
+        meter.CommunicationStatus = "Archived";
+        db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=User.Identity?.Name??"Administrator",Action="Meter archived",EntityType="Meter",EntityId=meter.Id.ToString(),OldValue=$"{meter.Name}; {meter.SerialNumber}",NewValue="Archived and inactive",Reason="Administrator confirmed archive",SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});
+        await db.SaveChangesAsync();
+        TempData["Success"]=$"{meter.Name} was archived. Its readings, tariffs, and invoices were preserved.";
+        return RedirectToPage(new { id });
+    }
+    public async Task<IActionResult> OnPostRestoreMeterAsync(int id, int meterId)
+    {
+        if (!User.IsInRole("Administrator")) return Forbid();
+        var meter = await db.Meters.FirstOrDefaultAsync(x => x.Id == meterId && x.ControllerId == id && x.CommunicationStatus == "Archived");
+        if (meter is null) return NotFound();
+        meter.CommunicationStatus = "Not commissioned";
+        db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=User.Identity?.Name??"Administrator",Action="Meter restored from archive",EntityType="Meter",EntityId=meter.Id.ToString(),OldValue="Archived",NewValue="Not commissioned",Reason="Administrator restored meter",SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});
+        await db.SaveChangesAsync();
+        TempData["Success"]=$"{meter.Name} was restored. Commission it again when ready.";
+        return RedirectToPage(new { id });
+    }
+    public async Task<IActionResult> OnPostPermanentDeleteAsync(int id, int meterId, string confirmation)
+    {
+        if (!User.IsInRole("Administrator")) return Forbid();
+        if (!string.Equals(confirmation, "DELETE", StringComparison.Ordinal))
+        {
+            TempData["Error"]="Permanent deletion was cancelled. Type DELETE exactly to confirm.";
+            return RedirectToPage(new { id });
+        }
+        var meter = await db.Meters.FirstOrDefaultAsync(x => x.Id == meterId && x.ControllerId == id);
+        if (meter is null) return NotFound();
+        var snapshot=$"{meter.Name}; serial {meter.SerialNumber}; controller {meter.ControllerId}; shop {meter.ShopId}; register {meter.StartingRegister}";
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var invoiceIds = await db.Invoices.Where(x => x.MeterId == meterId).Select(x => x.Id).ToListAsync();
+        if (invoiceIds.Count > 0) db.Payments.RemoveRange(await db.Payments.Where(x => invoiceIds.Contains(x.InvoiceId)).ToListAsync());
+        db.Invoices.RemoveRange(await db.Invoices.Where(x => x.MeterId == meterId).ToListAsync());
+        db.MeterReadings.RemoveRange(await db.MeterReadings.Where(x => x.MeterId == meterId).ToListAsync());
+        db.Tariffs.RemoveRange(await db.Tariffs.Where(x => x.MeterId == meterId).ToListAsync());
+        db.AuditLogs.RemoveRange(await db.AuditLogs.Where(x => x.EntityType == "Meter" && x.EntityId == meterId.ToString()).ToListAsync());
+        db.Meters.Remove(meter);
+        db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=User.Identity?.Name??"Administrator",Action="Meter permanently deleted",EntityType="DeletedMeter",EntityId=meterId.ToString(),OldValue=snapshot,NewValue="Meter and all dependent billing records deleted",Reason="Administrator typed DELETE",SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});
+        await db.SaveChangesAsync();
+        await transaction.CommitAsync();
+        TempData["Success"]=$"{meter.Name} and all of its readings, tariffs, invoices, and payments were permanently deleted.";
+        return RedirectToPage(new { id });
+    }
     private async Task<bool> Load(int id) { Controller=await db.Controllers.FindAsync(id) ?? null!; if(Controller is null)return false;Meters=await db.Meters.Where(x=>x.ControllerId==id).OrderBy(x=>x.StartingRegister).ToListAsync();Shops=await db.Shops.OrderBy(x=>x.ShopNumber).ToListAsync();return true; }
 }
