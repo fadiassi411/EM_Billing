@@ -24,6 +24,7 @@ TestResults/
 *.log
 *.inspect.ndjson
 document-build/
+document-build-license/
 doc-build-commissioning/
 presentation-build/
 private-license-authority/
