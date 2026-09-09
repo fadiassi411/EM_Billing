@@ -39,4 +39,10 @@ Get-NetFirewallRule -DisplayName $legacyFirewallRuleName -ErrorAction SilentlyCo
 New-NetFirewallRule -DisplayName $firewallRuleName -Direction Inbound -Action Allow `
     -Protocol TCP -LocalPort 5080 -Profile Any | Out-Null
 
+# Same-subnet BACnet/IP commissioning. Custom UDP ports require a matching site rule.
+$bacnetFirewallRuleName = 'Watchdog Energy Management (BACnet UDP 47808)'
+Get-NetFirewallRule -DisplayName $bacnetFirewallRuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+New-NetFirewallRule -DisplayName $bacnetFirewallRuleName -Direction Inbound -Action Allow `
+    -Program $executable -Protocol UDP -LocalPort 47808 -RemoteAddress LocalSubnet -Profile Domain,Private | Out-Null
+
 Start-Service -Name $serviceName

@@ -10,3 +10,4 @@ if ($service) {
 }
 Get-NetFirewallRule -DisplayName $firewallRuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 Get-NetFirewallRule -DisplayName $legacyFirewallRuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+Get-NetFirewallRule -DisplayName 'Watchdog Energy Management (BACnet UDP 47808)' -ErrorAction SilentlyContinue | Remove-NetFirewallRule

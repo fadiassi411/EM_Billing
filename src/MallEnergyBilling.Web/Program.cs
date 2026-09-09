@@ -52,7 +52,9 @@ builder.Services.AddAuthorization(o => o.AddPolicy("AdministratorOnly", p => p.R
 builder.Services.AddSingleton<BillingCalculator>();
 builder.Services.AddSingleton<TariffResolver>();
 builder.Services.AddSingleton<IModbusService, ModbusService>();
+builder.Services.AddSingleton<IBacnetTransport, BacnetTransport>();
 builder.Services.AddSingleton<IBacnetIpService, BacnetIpService>();
+builder.Services.AddHostedService<BacnetPollingService>();
 builder.Services.AddSingleton<InvoicePdfService>();
 builder.Services.AddScoped<InvoiceEmailService>();
 builder.Services.AddScoped<SystemFeatureService>();

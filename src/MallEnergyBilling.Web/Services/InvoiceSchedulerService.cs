@@ -45,7 +45,7 @@ public sealed class InvoiceSchedulerService(IServiceScopeFactory scopes, ILogger
         if (await db.BillingPeriods.AnyAsync(x => x.StartDate == startDate && x.EndDate == endDate, token)) return "Skipped: billing period already exists.";
         static DateTimeOffset AtStart(DateOnly date){var value=date.ToDateTime(TimeOnly.MinValue);return new(value,TimeZoneInfo.Local.GetUtcOffset(value));}
         var start=AtStart(startDate); var endExclusive=AtStart(endDate.AddDays(1)); var issued=AtStart(invoiceDate); var due=AtStart(dueDate);
-        var meters=await db.Meters.Include(x=>x.Shop).Where(x=>x.Active).OrderBy(x=>x.Id).ToListAsync(token);
+        var meters=await db.Meters.Include(x=>x.Shop).Include(x=>x.Controller).Where(x=>x.Active).OrderBy(x=>x.Id).ToListAsync(token);
         var waterEnabled=await db.SystemFeatureConfigurations.AsNoTracking().AnyAsync(x=>x.Id==1&&x.WaterBillingEnabled,token);if(!waterEnabled)meters=meters.Where(x=>x.UtilityType!=UtilityType.Water).ToList();
         var readings=(await db.MeterReadings.ToListAsync(token)).Where(x=>x.Timestamp<endExclusive).OrderBy(x=>x.Timestamp).ToList();
         var tariffs=await db.Tariffs.ToListAsync(token);
@@ -56,6 +56,7 @@ public sealed class InvoiceSchedulerService(IServiceScopeFactory scopes, ILogger
         foreach(var meter in meters)
         {
             var rows=readings.Where(x=>x.MeterId==meter.Id).ToList(); var opening=rows.LastOrDefault(x=>x.Timestamp<start); var closing=rows.LastOrDefault(x=>x.Timestamp>=start&&x.Timestamp<endExclusive);
+            var bacnetError=BacnetBillingGuard.Validate(meter,rows,closing,endExclusive);if(bacnetError is not null){errors.Add($"{meter.Name}: {bacnetError}");continue;}
             if(closing is null){errors.Add($"{meter.Name}: no reading");continue;}
             Tariff tariff; try{tariff=resolver.Resolve(tariffs,meter.Id,issued);}catch(InvalidOperationException){errors.Add($"{meter.Name}: no tariff");continue;}
             var previous=AccountBalanceService.Outstanding(priorInvoices.Where(x=>x.MeterId==meter.Id));

@@ -23,6 +23,8 @@ The installer is self-contained; customers do not need to install .NET. Existing
 
 ## Features
 
+- BACnet/IP device discovery, object browsing, configurable meter points and real asynchronous reads; see the [V2.4.0 BACnet commissioning guide](Documentation/BACnet-IP-commissioning.md).
+
 - Selectable Modbus RTU over Windows serial ports or Modbus TCP/IP over Ethernet
 - Multiple controllers with up to 45 meter channels per controller
 - Configurable register address, data type, word order, and scaling per meter

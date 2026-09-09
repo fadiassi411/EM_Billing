@@ -18,7 +18,7 @@ public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusServ
                 try
                 {
                     using var scope = scopes.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(); var now = DateTimeOffset.UtcNow;
-                    due = await db.Controllers.Where(x => x.Enabled && (x.CommunicationType == "ModbusRtu" || x.CommunicationType == "ModbusTcp" || x.CommunicationType == "BacnetIp") && db.Meters.Any(m => m.ControllerId == x.Id && m.Active)).Select(x => x.Id).ToListAsync(ct);
+                    due = await db.Controllers.Where(x => x.Enabled && (x.CommunicationType == "ModbusRtu" || x.CommunicationType == "ModbusTcp") && db.Meters.Any(m => m.ControllerId == x.Id && m.Active)).Select(x => x.Id).ToListAsync(ct);
                     due = due.Where(id => !nextPoll.TryGetValue(id, out var at) || at <= now).ToList();
                 }
                 finally { maintenance.Gate.Release(); }

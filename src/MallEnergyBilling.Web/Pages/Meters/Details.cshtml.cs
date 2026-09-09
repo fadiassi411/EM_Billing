@@ -15,7 +15,7 @@ public sealed class DetailsModel(ApplicationDbContext db) : PageModel
 
     public async Task<IActionResult> OnGetAsync(int id)
     {
-        Meter = await db.Meters.Include(x => x.Shop).Include(x => x.Controller).FirstOrDefaultAsync(x => x.Id == id && x.CommunicationStatus != "Archived") ?? null!;
+        Meter = await db.Meters.Include(x => x.Shop).Include(x => x.Controller).Include(x => x.BacnetPoints).FirstOrDefaultAsync(x => x.Id == id && x.CommunicationStatus != "Archived") ?? null!;
         if (Meter is null) return NotFound();
 
         var readings = (await db.MeterReadings.Where(x => x.MeterId == id && !x.RequiresReview).ToListAsync())

@@ -9,7 +9,7 @@
 
 <div class="cards meter-summary-cards">
     <div class="metric"><span>Accumulated reading</span><b>@Model.Meter.LastReading.ToString("N3") @Model.Meter.Unit</b></div>
-    <div class="metric"><span>Communication</span><b>@Model.Meter.CommunicationStatus</b></div>
+    <div class="metric"><span>Communication</span><b>@Model.Meter.DisplayStatus</b></div>
     <div class="metric"><span>Serial number</span><b>@Model.Meter.SerialNumber</b></div>
     <div class="metric"><span>Last reading</span><b>@(Model.Meter.LastReadingAt?.ToLocalTime().ToString("g") ?? "No recent reading")</b></div>
 </div>
@@ -32,4 +32,9 @@
   window.setTimeout(() => { sessionStorage.setItem(key, String(window.scrollY)); window.location.reload(); }, 5000);
 })();
 </script>
+}
+
+
+@if(Model.Meter.Controller?.CommunicationType=="BacnetIp"){
+<section class="panel"><h2>Live meter measurements</h2><p>Values retain their last successful timestamp. Stale/bad readings are not fresh measurements.</p><table><thead><tr><th>Measurement</th><th>Value</th><th>Quality</th><th>Last success</th></tr></thead><tbody>@foreach(var p in Model.Meter.BacnetPoints){<tr><td>@p.Measurement<small>@p.Name</small></td><td>@p.LastValue @p.Unit</td><td>@(!Model.Meter.Active||!Model.Meter.Controller.Enabled?"Disabled":p.EffectiveQuality(Model.Meter.Controller.PollingIntervalSeconds,DateTimeOffset.UtcNow))</td><td>@p.LastSuccess?.ToLocalTime()</td></tr>}</tbody></table>@if(User.IsInRole("Administrator")){<a class="button" asp-page="/Admin/Controllers/Points" asp-route-id="@Model.Meter.Id">Configure / test BACnet points</a>}</section>
 }

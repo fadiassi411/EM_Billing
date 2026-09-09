@@ -28,7 +28,7 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
     [BindProperty, StringLength(100)] public string FirstMeterSerial { get; set; } = "";
     [BindProperty, StringLength(300)] public string Reason { get; set; } = "";
 
-    public async Task<IActionResult> OnGetAsync(int id) { if (!await Load(id)) return NotFound(); ShopId = Shops.FirstOrDefault()?.Id ?? 0; ChannelCount = Math.Max(1, 45 - Meters.Count); return Page(); }
+    public async Task<IActionResult> OnGetAsync(int id) { if (!await Load(id)) return NotFound(); ShopId = Shops.FirstOrDefault()?.Id ?? 0; ChannelCount = Controller.CommunicationType == "BacnetIp" ? 1 : Math.Max(1, 45 - Meters.Count); if(Controller.CommunicationType == "BacnetIp") ScalingFactor=1; return Page(); }
     public async Task<IActionResult> OnPostGenerateAsync(int id)
     {
         if (!await Load(id)) return NotFound();
@@ -41,13 +41,11 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
         if (isBacnet && lastObject > 4194303) ModelState.AddModelError(nameof(FirstBacnetObjectInstance), "The generated BACnet object range exceeds 4194303.");
         if (!ModelState.IsValid) return Page();
         var existingRegisters = Meters.Select(x => x.StartingRegister).ToHashSet();
-        var existingObjects = Meters.Select(x => $"{x.BacnetObjectType}:{x.BacnetObjectInstance}").ToHashSet(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < ChannelCount; i++)
         {
             var register = FirstRegister + i * RegisterStride;
             var objectInstance = FirstBacnetObjectInstance + i * BacnetObjectStride;
             if (!isBacnet && existingRegisters.Contains(register)) { ModelState.AddModelError("", $"Register {register} is already assigned on this controller."); return Page(); }
-            if (isBacnet && existingObjects.Contains($"{BacnetObjectType}:{objectInstance}")) { ModelState.AddModelError("", $"BACnet object {BacnetObjectType}:{objectInstance} is already assigned on this controller."); return Page(); }
         }
         var startChannel = Meters.Count + 1;
         for (var i = 0; i < ChannelCount; i++)
