@@ -10,7 +10,7 @@
     <Product>Watchdog License Manager</Product>
     <Company>MicroBrain by Fadi Assi</Company>
     <Description>Offline license generator for Watchdog Energy Management.</Description>
-    <Version>2.4.0</Version>
+    <Version>4.2.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Watchdog.Licensing\Watchdog.Licensing.csproj" />
