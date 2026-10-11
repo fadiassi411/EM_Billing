@@ -60,7 +60,18 @@ public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusServ
                     value = ModbusValueConverter.ConvertValue(result.Registers, meter.DataType, meter.WordOrder, meter.ScalingFactor);
                     communicationDetail = $"{TransportName(controller)} request {result.RequestHex}; response {result.ResponseHex}";
                 }
-                if (value < meter.LastReading && meter.LastReadingAt is not null) db.MeterReadings.Add(new() { MeterId = meter.Id, RawValue = (ulong)Math.Max(0, value / meter.ScalingFactor), AccumulatedKwh = value, Timestamp = DateTimeOffset.UtcNow, Source = ReadingSource.Automatic, Quality = "Review: lower than previous", RequiresReview = true });
+                // A cumulative counter decrease is suspect, not a replacement reading.
+                // Preserve both the accepted value and its timestamp until it recovers.
+                if (value < 0 || value < meter.LastReading && meter.LastReadingAt is not null)
+                {
+                    if (meter.CommunicationStatus != "Counter Review")
+                        db.MeterReadings.Add(new() { MeterId = meter.Id, RawValue = (ulong)Math.Max(0, value / meter.ScalingFactor), AccumulatedKwh = value, Timestamp = DateTimeOffset.UtcNow, Source = ReadingSource.Automatic, Quality = "Review: counter decrease or negative value", RequiresReview = true });
+                    meter.CommunicationStatus = "Counter Review";
+                    controller.LastSuccess = DateTimeOffset.UtcNow;
+                    controller.Condition = "Counter Review";
+                    controller.Notes = $"Counter review for {meter.Name}: received {value}, retained {meter.LastReading}. {communicationDetail}";
+                    continue;
+                }
                 meter.LastReading = value; meter.LastReadingAt = DateTimeOffset.UtcNow; meter.CommunicationStatus = "Connected"; controller.LastSuccess = DateTimeOffset.UtcNow; controller.Condition = "Connected"; controller.Notes = $"Last {communicationDetail}";
                 await SaveHistoryIfDue(db, meter, ct);
             }
