@@ -1,0 +1,74 @@
+name: Windows installer release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/windows-release.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-installer-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Determine version
+        run: |
+          [xml]$project = Get-Content src/MallEnergyBilling.Web/MallEnergyBilling.Web.csproj
+          $version = [string]$project.Project.PropertyGroup.Version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid release version' }
+          "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+      - name: Test on Windows
+        run: |
+          dotnet test tests/MallEnergyBilling.Tests/MallEnergyBilling.Tests.csproj --configuration Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish self-contained application
+        run: |
+          dotnet publish src/MallEnergyBilling.Web/MallEnergyBilling.Web.csproj --configuration Release --runtime win-x64 --self-contained true --output outputs/Watch-Dog-EM-win-x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile installer
+        run: |
+          $compiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $compiler)) { throw 'Inno Setup compiler is missing from the Windows runner' }
+          & $compiler installer/WatchDogEM.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $installer = "dist/Watchdog-Energy-Management-Setup-$env:RELEASE_VERSION-win-x64.exe"
+          if (-not (Test-Path $installer)) { throw 'Expected installer was not generated' }
+          $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $(Split-Path $installer -Leaf)" | Set-Content "$installer.sha256" -Encoding ascii
+      - name: Retain installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            dist/*.exe
+            dist/*.sha256
+          if-no-files-found: error
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "v$env:RELEASE_VERSION"
+          $repo = '${{ github.repository }}'
+          $notes = "Documentation/releases/$env:RELEASE_VERSION.md"
+          gh release view $tag --repo $repo
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --repo $repo --verify-tag --title "Watchdog Energy Management $env:RELEASE_VERSION" --notes-file $notes
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $installer = "dist/Watchdog-Energy-Management-Setup-$env:RELEASE_VERSION-win-x64.exe"
+          gh release upload $tag $installer "$installer.sha256" --repo $repo --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
