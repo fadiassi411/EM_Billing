@@ -60,7 +60,7 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
     public async Task<IActionResult> OnPostDeleteAsync(int id, int meterId)
     {
         var meter = await db.Meters.FirstOrDefaultAsync(x => x.Id == meterId && x.ControllerId == id);
-        if (meter is null) return NotFound();
+        if (meter is null) return MeterGone(id, meterId);
         if (await db.MeterReadings.AnyAsync(x => x.MeterId == meterId) || await db.Invoices.AnyAsync(x => x.MeterId == meterId) || await db.Tariffs.AnyAsync(x => x.MeterId == meterId))
         {
             TempData["Error"] = $"Channel {meter.Name} has reading, tariff, or invoice history and cannot be deleted. Deactivate it instead.";
@@ -73,7 +73,7 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
     {
         if (!User.IsInRole("Administrator")) return Forbid();
         var meter = await db.Meters.FirstOrDefaultAsync(x => x.Id == meterId && x.ControllerId == id);
-        if (meter is null) return NotFound();
+        if (meter is null) return MeterGone(id, meterId);
         meter.Active = false;
         meter.CommunicationStatus = "Archived";
         db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=User.Identity?.Name??"Administrator",Action="Meter archived",EntityType="Meter",EntityId=meter.Id.ToString(),OldValue=$"{meter.Name}; {meter.SerialNumber}",NewValue="Archived and inactive",Reason="Administrator confirmed archive",SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});
@@ -85,7 +85,7 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
     {
         if (!User.IsInRole("Administrator")) return Forbid();
         var meter = await db.Meters.FirstOrDefaultAsync(x => x.Id == meterId && x.ControllerId == id && x.CommunicationStatus == "Archived");
-        if (meter is null) return NotFound();
+        if (meter is null) return MeterGone(id, meterId);
         meter.CommunicationStatus = "Not commissioned";
         db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=User.Identity?.Name??"Administrator",Action="Meter restored from archive",EntityType="Meter",EntityId=meter.Id.ToString(),OldValue="Archived",NewValue="Not commissioned",Reason="Administrator restored meter",SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});
         await db.SaveChangesAsync();
@@ -101,7 +101,7 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
             return RedirectToPage(new { id });
         }
         var meter = await db.Meters.FirstOrDefaultAsync(x => x.Id == meterId && x.ControllerId == id);
-        if (meter is null) return NotFound();
+        if (meter is null) return MeterGone(id, meterId);
         var snapshot=$"{meter.Name}; serial {meter.SerialNumber}; controller {meter.ControllerId}; shop {meter.ShopId}; register {meter.StartingRegister}";
         await using var transaction = await db.Database.BeginTransactionAsync();
         var invoiceIds = await db.Invoices.Where(x => x.MeterId == meterId).Select(x => x.Id).ToListAsync();
@@ -116,6 +116,13 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
         await db.SaveChangesAsync();
         await transaction.CommitAsync();
         TempData["Success"]=$"{meter.Name} and all of its readings, tariffs, invoices, and payments were permanently deleted.";
+        return RedirectToPage(new { id });
+    }
+    // The meter was already deleted or moved (for example the button was pressed twice, or the
+    // page was out of date). Show a message on the channel list instead of an error page.
+    private IActionResult MeterGone(int id, int meterId)
+    {
+        TempData["Error"] = $"That meter (ID {meterId}) no longer exists on this controller. It was probably already deleted; the list below is up to date.";
         return RedirectToPage(new { id });
     }
     private async Task<bool> Load(int id) { Controller=await db.Controllers.FindAsync(id) ?? null!; if(Controller is null)return false;Meters=await db.Meters.Where(x=>x.ControllerId==id).OrderBy(x=>x.StartingRegister).ToListAsync();Shops=await db.Shops.OrderBy(x=>x.ShopNumber).ToListAsync();return true; }
