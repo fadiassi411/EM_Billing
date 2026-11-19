@@ -1,36 +1,46 @@
 @model MallEnergyBilling.Web.Pages.PowerSources.PowerSourceMetersPageModel
+@{
+    var online = Model.Meters.Count(x => x.DisplayStatus is "Connected" or "Online");
+    var alarms = Model.Meters.Count(x => x.DisplayStatus is "Failed" or "Frozen" or "Stale" or "Timeout" or "BACnet Error" or "Configuration Error" or "Counter Review" or "Partial Data");
+    var total = Model.Meters.Sum(x => x.LastReading);
+}
 <section class="hero compact source-hero">
     <div>
-        <span class="eyebrow">POWER SOURCE</span>
-        <h1>@Model.Title</h1>
-        <p>@Model.Description</p>
+        <span class="eyebrow">Power source</span>
+        <h1>@Model.Title meters</h1>
+        <p>@Model.Description <span class="live-dot" data-live-indicator>Live</span></p>
     </div>
-    <span class="source-badge">@Model.Meters.Count meter@(Model.Meters.Count == 1 ? "" : "s")</span>
+    <span class="source-badge source-@Model.Source.ToString().ToLowerInvariant()">@Model.Meters.Count meter@(Model.Meters.Count == 1 ? "" : "s")</span>
 </section>
 
-<section class="meter-search-banner" aria-labelledby="meter-search-title">
-    <div class="search-banner-copy">
-        <span class="search-power-icon" aria-hidden="true">
-            @if(Model.Source == MallEnergyBilling.Web.Models.PowerSource.Grid){<svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>}
-            else{<svg viewBox="0 0 24 24"><path d="M12 2v8m0 4v8M4.9 4.9l5.7 5.7m2.8 2.8 5.7 5.7M2 12h8m4 0h8M4.9 19.1l5.7-5.7m2.8-2.8 5.7-5.7"/></svg>}
-        </span>
-        <div><h2 id="meter-search-title">Find a @Model.Title meter</h2><p>Search by meter number, ID, name, customer, tenant, shop, room, or location.</p></div>
-    </div>
-    <form method="get" class="meter-search-form" role="search">
-        <label class="sr-only" for="meter-search">Search meters</label>
-        <input id="meter-search" type="search" name="q" value="@Model.Search" placeholder="Enter meter, customer, shop, room, or location" autocomplete="off" />
-        <button type="submit">Search</button>
-        @if(!string.IsNullOrWhiteSpace(Model.Search)){<a class="button search-clear" asp-page="@Model.PagePath">Clear</a>}
-    </form>
-</section>
+<div class="cards" id="source-kpis" data-live>
+    <div class="metric m-info"><span>Meters</span><b>@Model.Meters.Count</b><small>@Model.Meters.Count(x => x.Active) active</small></div>
+    <div class="metric m-ok"><span>Online</span><b>@online</b><small>reading normally</small></div>
+    <div class="metric @(alarms > 0 ? "m-bad" : "m-ok")"><span>Alarms</span><b>@alarms</b><small>@(alarms > 0 ? "need attention" : "all clear")</small></div>
+    <div class="metric"><span>Total accumulated</span><b>@total.ToString("N0") kWh</b><small>sum of meter totals</small></div>
+</div>
 
 <section class="panel source-meter-panel">
-    <div class="panel-title"><h2>@Model.Title meter register</h2>@if(!string.IsNullOrWhiteSpace(Model.Search)){<span>Results for “@Model.Search”</span>}</div>
-    @if(Model.Meters.Count == 0){
-        <div class="meter-empty-state"><span aria-hidden="true">⌁</span><strong>No matching meter was found.</strong><p>Try another meter number, customer, shop, room, or location.</p></div>
-    }else{
-        <div class="table-responsive"><table><thead><tr><th>Meter</th><th>Customer / tenant</th><th>Shop / location</th><th>Controller</th><th>Reading</th><th>Communication</th><th></th></tr></thead><tbody>
-        @foreach(var meter in Model.Meters){<tr><td><b>@meter.Name</b><small>ID @meter.Id · @meter.SerialNumber</small></td><td>@(string.IsNullOrWhiteSpace(meter.Shop?.TenantName)?"—":meter.Shop.TenantName)<small>@meter.Shop?.ContactPerson</small></td><td><b>@meter.Shop?.ShopNumber · @meter.Shop?.Name</b><small>@meter.Shop?.Floor · @meter.Shop?.Zone</small></td><td>@meter.Controller?.Name<small>@meter.Controller?.MdbPanel</small></td><td><span class="meter-reading-value">@meter.LastReading.ToString("N3") kWh</span><small>@(meter.LastReadingAt?.ToLocalTime().ToString("g")??"No recent reading")</small></td><td><span class="status @meter.DisplayStatus.ToLowerInvariant().Replace(" ","-")">@meter.DisplayStatus</span></td><td><a class="button meter-view-button" asp-page="/Meters/Details" asp-route-id="@meter.Id">View meter</a></td></tr>}
-        </tbody></table></div>
-    }
+    <div class="panel-title"><h2>@Model.Title meter register</h2><span>Type to search instantly · click a column to sort · press / to search</span></div>
+    @if(!string.IsNullOrWhiteSpace(Model.Search)){<div class="filter-note"><span>Showing only meters matching “@Model.Search”.</span><a asp-page="@Model.PagePath">Show all meters</a></div>}
+    <div class="table-responsive">
+        <table data-grid="source-meters" data-grid-placeholder="Search meter, serial, customer, shop, floor, zone…" data-grid-empty="No meter matches this search.">
+            <thead><tr><th>Meter</th><th>Customer / tenant</th><th>Shop / location</th><th>Controller</th><th>Reading</th><th>Status</th><th data-sort="off"></th></tr></thead>
+            <tbody id="source-meter-rows" data-live>
+            @if(Model.Meters.Count == 0){<tr><td colspan="7">No @Model.Title.ToLowerInvariant() meter found.</td></tr>}
+            @foreach(var meter in Model.Meters){
+                <tr>
+                    <td><b>@meter.Name</b><small>ID @meter.Id · @meter.SerialNumber</small></td>
+                    <td>@(string.IsNullOrWhiteSpace(meter.Shop?.TenantName) ? "—" : meter.Shop.TenantName)<small>@meter.Shop?.ContactPerson</small></td>
+                    <td><b>@meter.Shop?.ShopNumber · @meter.Shop?.Name</b><small>@meter.Shop?.Floor · @meter.Shop?.Zone</small></td>
+                    <td>@meter.Controller?.Name<small>@meter.Controller?.MdbPanel</small></td>
+                    <td data-sort="@meter.LastReading.ToString(System.Globalization.CultureInfo.InvariantCulture)"><span class="meter-reading-value">@meter.LastReading.ToString("N3") kWh</span><small>@(meter.LastReadingAt?.ToLocalTime().ToString("dd MMM yyyy HH:mm") ?? "No reading yet")</small></td>
+                    <td><span class="status">@meter.DisplayStatus</span></td>
+                    <td><a class="button" asp-page="/Meters/Details" asp-route-id="@meter.Id">Open</a></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
 </section>
+<div data-live-refresh="10" hidden></div>

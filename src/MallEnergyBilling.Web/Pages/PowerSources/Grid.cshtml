@@ -2,16 +2,3 @@
 @model MallEnergyBilling.Web.Pages.PowerSources.GridModel
 @{ ViewData["Title"] = "Grid meters"; }
 <partial name="_PowerSourceMeters" model="Model" />
-@section Scripts{
-<script>
-(() => {
-  const key = "grid-page-scroll";
-  const saved = sessionStorage.getItem(key);
-  if (saved !== null) { window.scrollTo(0, Number(saved)); sessionStorage.removeItem(key); }
-  window.setTimeout(() => {
-    sessionStorage.setItem(key, String(window.scrollY));
-    window.location.reload();
-  }, 5000);
-})();
-</script>
-}

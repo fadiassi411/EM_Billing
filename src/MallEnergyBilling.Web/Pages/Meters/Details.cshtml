@@ -7,7 +7,7 @@
     <div class="meter-detail-actions"><span class="source-badge source-@Model.Meter.PowerSource.ToString().ToLowerInvariant()">@Model.Meter.PowerSource</span><a class="button" href="javascript:history.back()">Back</a></div>
 </section>
 
-<div class="cards meter-summary-cards">
+<div class="cards meter-summary-cards" id="meter-summary" data-live>
     <div class="metric"><span>Accumulated reading</span><b>@Model.Meter.LastReading.ToString("N3") @Model.Meter.Unit</b></div>
     <div class="metric"><span>Communication</span><b>@Model.Meter.DisplayStatus</b></div>
     <div class="metric"><span>Serial number</span><b>@Model.Meter.SerialNumber</b></div>
@@ -16,6 +16,7 @@
 @if(Model.PendingReviews > 0 || Model.Meter.BacnetCounterReview){<div class="alert-error"><b>Counter decrease waiting for review.</b> This meter is not billed until it is resolved.@if(User.IsInRole("Administrator")){<text> </text><a href="/Meters/@Model.Meter.Id/Review">Resolve now</a>}</div>}
 @if(User.IsInRole("Administrator")){<p class="note"><a href="/Meters/@Model.Meter.Id/Review">Counter review / meter replaced</a></p>}
 
+<div id="meter-charts" data-live>
 @foreach(var chart in new[]{Model.DayChart,Model.MonthChart,Model.YearChart}){
 <section class="panel usage-chart-panel">
     <div class="panel-title"><div><span class="eyebrow">CONSUMPTION</span><h2>@chart.Title</h2><p class="note">@(chart.Title=="Per Day"?"Hourly consumption for today":chart.Title=="Per Month"?"Daily consumption for the current month":"Monthly consumption for the current year")</p></div><div class="usage-total"><small>Total usage</small><strong>@chart.Total.ToString("N3") @Model.Meter.Unit</strong></div></div>
@@ -25,16 +26,9 @@
     </div>
 </section>}
 
-@section Scripts{
-<script>
-(() => {
-  const key = "meter-details-scroll-@Model.Meter.Id";
-  const saved = sessionStorage.getItem(key);
-  if (saved !== null) { window.scrollTo(0, Number(saved)); sessionStorage.removeItem(key); }
-  window.setTimeout(() => { sessionStorage.setItem(key, String(window.scrollY)); window.location.reload(); }, 5000);
-})();
-</script>
-}
+</div>
+<div data-live-refresh="10" hidden></div>
+
 
 
 @if(Model.Meter.Controller?.CommunicationType=="BacnetIp"){
