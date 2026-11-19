@@ -6,7 +6,7 @@ public static class AccountBalanceService
 {
     public static decimal Charges(Invoice invoice) => invoice.Total - invoice.PreviousBalance;
     public static decimal Outstanding(IEnumerable<Invoice> invoices) => decimal.Round(invoices
-        .Where(x => x.Status != InvoiceStatus.Cancelled)
+        .Where(x => x.Status is not (InvoiceStatus.Cancelled or InvoiceStatus.Draft))
         .Sum(x => Charges(x) - x.Payments.Sum(p => p.Amount)), 2, MidpointRounding.AwayFromZero);
     public static InvoiceStatus StatusAfterPayment(Invoice invoice, DateTimeOffset now)
     {

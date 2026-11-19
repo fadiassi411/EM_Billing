@@ -48,9 +48,15 @@ public sealed class PointsModel(ApplicationDbContext db, IBacnetIpService bacnet
         if (p is null) return NotFound();
         if (Input.Id == 0) db.BacnetPoints.Add(p);
         var old = $"{p.ObjectType}:{p.ObjectInstance}/{p.PropertyId}; {p.Measurement}; {p.Scale}; {p.Offset}";
+        var energyBefore = p.Measurement == MeasurementType.TotalImportEnergy ? old : null;
         p.Name=Input.Name.Trim(); p.Measurement=Input.Measurement; p.ObjectType=Input.ObjectType; p.ObjectInstance=Input.ObjectInstance;
         p.PropertyId=Input.PropertyId; p.Unit=Input.Unit.Trim(); p.Scale=Input.Scale; p.Offset=Input.Offset; p.Enabled=Input.Enabled;
         p.BillingConfirmed=Input.Measurement==MeasurementType.TotalImportEnergy && Input.BillingConfirmed;
+        var energyAfter = p.Measurement == MeasurementType.TotalImportEnergy ? $"{p.ObjectType}:{p.ObjectInstance}/{p.PropertyId}; {p.Measurement}; {p.Scale}; {p.Offset}" : null;
+        // A different billing point or scaling gives a different counter value: start a new counter
+        // instead of billing (or flagging) the jump between the old and the new value.
+        if (energyBefore != energyAfter && (energyBefore ?? energyAfter) is not null && await db.MeterReadings.AnyAsync(x => x.MeterId == id))
+            Meter.RebaseOnNextReading = true;
         p.Quality="Not read"; p.LastError="Configuration changed; awaiting fresh read.";
         Meter.CommunicationStatus="Awaiting poll";
         db.AuditLogs.Add(new() { Timestamp=DateTimeOffset.UtcNow, UserId=User.Identity?.Name??"Administrator", Action="BACnet point saved", EntityType="Meter", EntityId=id.ToString(), OldValue=old, NewValue=$"{p.Name}: {p.ObjectType}:{p.ObjectInstance}/{p.PropertyId}; {p.Measurement}; scale {p.Scale}; offset {p.Offset}; billing confirmed {p.BillingConfirmed}" });

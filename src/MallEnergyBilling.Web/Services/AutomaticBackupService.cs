@@ -6,13 +6,17 @@ public sealed class AutomaticBackupService(AppDataPaths paths, DatabaseMaintenan
 {
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        while (!ct.IsCancellationRequested)
+        try
         {
-            try { await CreateDailyBackup(ct); }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
-            catch (Exception ex) { log.LogError(ex, "Automatic database backup failed"); }
-            await Task.Delay(TimeSpan.FromHours(6), ct);
+            while (!ct.IsCancellationRequested)
+            {
+                try { await CreateDailyBackup(ct); }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex) { log.LogError(ex, "Automatic database backup failed"); }
+                await Task.Delay(TimeSpan.FromHours(6), ct);
+            }
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
     }
     async Task CreateDailyBackup(CancellationToken ct)
     {

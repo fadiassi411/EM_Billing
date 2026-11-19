@@ -1,91 +1,274 @@
-using Controller=MallEnergyBilling.Web.Models.Controller;using MallEnergyBilling.Web.Data;using MallEnergyBilling.Web.Models;using MallEnergyBilling.Web.Services;using Microsoft.AspNetCore.Mvc;using Microsoft.AspNetCore.Mvc.RazorPages;using Microsoft.Data.Sqlite;using Microsoft.EntityFrameworkCore;namespace MallEnergyBilling.Web.Pages.Operations;
-public class IndexModel(ApplicationDbContext db,AppDataPaths paths,DatabaseMaintenanceService maintenance,BillingCalculator billingCalculator,TariffResolver tariffResolver):PageModel
+using Controller = MallEnergyBilling.Web.Models.Controller;
+using System.Text;
+using MallEnergyBilling.Web.Data;
+using MallEnergyBilling.Web.Models;
+using MallEnergyBilling.Web.Services;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+
+namespace MallEnergyBilling.Web.Pages.Operations;
+
+public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMaintenanceService maintenance, BillingRunService billing, TimeProvider time) : PageModel
 {
- public List<Controller>Controllers{get;set;}=[];public List<Shop>Shops{get;set;}=[];public List<Meter>Meters{get;set;}=[];public List<Tariff>Tariffs{get;set;}=[];public List<MeterReading>Readings{get;set;}=[];
- public List<BillingPeriod>BillingPeriods{get;set;}=[];public List<Invoice>Invoices{get;set;}=[];
- public List<InvoiceSchedule>InvoiceSchedules{get;set;}=[];
- public DateOnly SuggestedPeriodStart=>new(DateTime.Today.Year,DateTime.Today.Month,1);
- public DateOnly SuggestedPeriodEnd=>SuggestedPeriodStart.AddMonths(1).AddDays(-1);
- public DateOnly SuggestedInvoiceDate=>SuggestedPeriodEnd.AddDays(1);
- public DateOnly SuggestedDueDate=>SuggestedInvoiceDate.AddDays(10);
- public string BackupPath=>paths.BackupDirectory;public List<BackupFile>BackupFiles{get;set;}=[];public sealed record BackupFile(string Name,long Size,DateTime Modified);
- public IReadOnlyList<string>Currencies{get;}=["UGX","USD","EUR","GBP","AED","AFN","ALL","AMD","ANG","AOA","ARS","AUD","AWG","AZN","BAM","BBD","BDT","BGN","BHD","BIF","BMD","BND","BOB","BRL","BSD","BTN","BWP","BYN","BZD","CAD","CDF","CHF","CLP","CNY","COP","CRC","CUP","CVE","CZK","DJF","DKK","DOP","DZD","EGP","ERN","ETB","FJD","FKP","GEL","GHS","GIP","GMD","GNF","GTQ","GYD","HKD","HNL","HTG","HUF","IDR","ILS","INR","IQD","IRR","ISK","JMD","JOD","JPY","KES","KGS","KHR","KMF","KPW","KRW","KWD","KYD","KZT","LAK","LBP","LKR","LRD","LSL","LYD","MAD","MDL","MGA","MKD","MMK","MNT","MOP","MRU","MUR","MVR","MWK","MXN","MYR","MZN","NAD","NGN","NIO","NOK","NPR","NZD","OMR","PAB","PEN","PGK","PHP","PKR","PLN","PYG","QAR","RON","RSD","RUB","RWF","SAR","SBD","SCR","SDG","SEK","SGD","SHP","SLE","SOS","SRD","SSP","STN","SVC","SYP","SZL","THB","TJS","TMT","TND","TOP","TRY","TTD","TWD","TZS","UAH","UYU","UZS","VES","VND","VUV","WST","XAF","XCD","XOF","XPF","YER","ZAR","ZMW","ZWL"];
- public async Task OnGet(){Controllers=await db.Controllers.ToListAsync();Shops=await db.Shops.ToListAsync();Meters=await db.Meters.Include(x=>x.Shop).Include(x=>x.Controller).Where(x=>x.CommunicationStatus!="Archived").ToListAsync();Tariffs=await db.Tariffs.Include(x=>x.Meter).OrderByDescending(x=>x.Id).ToListAsync();Readings=await db.MeterReadings.Include(x=>x.Meter).OrderByDescending(x=>x.Id).Take(100).ToListAsync();BillingPeriods=(await db.BillingPeriods.ToListAsync()).OrderByDescending(x=>x.StartDate).ToList();InvoiceSchedules=(await db.InvoiceSchedules.ToListAsync()).OrderByDescending(x=>x.GenerateAt).Take(20).ToList();Invoices=(await db.Invoices.Include(x=>x.Meter).ThenInclude(x=>x!.Shop).Include(x=>x.Payments).ToListAsync()).OrderByDescending(x=>x.InvoiceDate).ToList();foreach(var invoice in Invoices){var status=AccountBalanceService.StatusAfterPayment(invoice,DateTimeOffset.Now);if(status!=invoice.Status)invoice.Status=status;}if(db.ChangeTracker.HasChanges())await db.SaveChangesAsync();LoadBackups();}
- public async Task<IActionResult>OnPostTariff(int meterId,decimal price,string currency,string reason){if(!CanManageBilling())return Forbid();if(price<=0)return BadRequest("A positive price is required.");currency=(currency??"").Trim().ToUpperInvariant();if(currency.Length!=3||currency.Any(c=>c<'A'||c>'Z'))return BadRequest("Select a valid three-letter ISO currency code.");var meter=await db.Meters.FindAsync(meterId);if(meter is null)return BadRequest("Select a valid meter.");var auditReason=string.IsNullOrWhiteSpace(reason)?"Not provided":reason.Trim();var old=await db.Tariffs.Where(x=>x.MeterId==meterId).OrderByDescending(x=>x.Id).FirstOrDefaultAsync();var t=new Tariff{MeterId=meterId,PricePerKwh=price,Currency=currency,EffectiveFrom=DateTimeOffset.Now,CreatedAt=DateTimeOffset.UtcNow,ChangedBy=User.Identity?.Name??"Local administrator",Reason=auditReason};db.Tariffs.Add(t);db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=t.ChangedBy,Action="Meter tariff changed",EntityType="Meter",EntityId=meterId.ToString(),OldValue=old is null?"none":$"{old.Currency} {old.PricePerKwh}",NewValue=$"{currency} {price}",Reason=auditReason,SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});await db.SaveChangesAsync();TempData["BillingSuccess"]=$"Tariff saved for {meter.Name} and active from now.";return RedirectToPage(null,null,"tariffs");}
- public async Task<IActionResult>OnPostSaveTariffAndSchedule(int meterId,decimal price,string currency,int publicationDay,int dueDays=10,string reason="")
- {
-  if(!CanManageBilling())return Forbid();
-  if(price<=0)return BillingError("Enter a positive tariff price.");
-  currency=(currency??"").Trim().ToUpperInvariant();if(currency.Length!=3||currency.Any(c=>c<'A'||c>'Z'))return BillingError("Select a valid currency.");
-  if(publicationDay<1||publicationDay>7)return BillingError("Select an invoice publication day from 1 to 7.");
-  if(dueDays<0||dueDays>365)return BillingError("Payment due days must be between 0 and 365.");
-  var meter=await db.Meters.FindAsync(meterId);if(meter is null)return BillingError("Select a valid meter.");
-  var user=User.Identity?.Name??"Administrator";var auditReason=string.IsNullOrWhiteSpace(reason)?"Settings updated":reason.Trim();
-  var oldTariff=await db.Tariffs.Where(x=>x.MeterId==meterId).OrderByDescending(x=>x.Id).FirstOrDefaultAsync();
-  var today=DateOnly.FromDateTime(DateTime.Today);var candidate=new DateOnly(today.Year,today.Month,publicationDay);if(candidate<today)candidate=candidate.AddMonths(1);var runLocal=candidate.ToDateTime(new TimeOnly(0,5));var run=new DateTimeOffset(runLocal,TimeZoneInfo.Local.GetUtcOffset(runLocal));
-  await using var transaction=await db.Database.BeginTransactionAsync();
-  db.Tariffs.Add(new(){MeterId=meterId,PricePerKwh=price,Currency=currency,EffectiveFrom=DateTimeOffset.Now,CreatedAt=DateTimeOffset.UtcNow,ChangedBy=user,Reason=auditReason});
-  var existing=await db.InvoiceSchedules.Where(x=>!x.Completed).ToListAsync();foreach(var item in existing){item.Completed=true;item.CompletedAt=DateTimeOffset.Now;item.Result="Replaced by updated monthly settings.";}
-  db.InvoiceSchedules.Add(new(){PublicationDay=publicationDay,GenerateAt=run,DueDays=dueDays,CreatedAt=DateTimeOffset.UtcNow,CreatedBy=user});
-  db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=user,Action="Tariff and invoice schedule updated",EntityType="Meter",EntityId=meterId.ToString(),OldValue=oldTariff is null?"No tariff":$"{oldTariff.Currency} {oldTariff.PricePerKwh}",NewValue=$"{currency} {price}; publish monthly on day {publicationDay}; due after {dueDays} days",Reason=auditReason,SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});
-  await db.SaveChangesAsync();await transaction.CommitAsync();TempData["BillingSuccess"]=$"{meter.Name} tariff saved. Invoices will publish on day {publicationDay} of every month.";return RedirectToPage(null,null,"tariffs");
- }
- public async Task<IActionResult>OnPostScheduleInvoices(int publicationDay,int dueDays=10){if(!CanManageBilling())return Forbid();if(publicationDay<1||publicationDay>7)return BillingError("Select an invoice publication day from 1 to 7.");if(dueDays<0||dueDays>365)return BillingError("Due days must be between 0 and 365.");var today=DateOnly.FromDateTime(DateTime.Today);var candidate=new DateOnly(today.Year,today.Month,publicationDay);if(candidate<today)candidate=candidate.AddMonths(1);var runLocal=candidate.ToDateTime(new TimeOnly(0,5));var run=new DateTimeOffset(runLocal,TimeZoneInfo.Local.GetUtcOffset(runLocal));var existing=await db.InvoiceSchedules.Where(x=>!x.Completed).ToListAsync();foreach(var item in existing){item.Completed=true;item.CompletedAt=DateTimeOffset.Now;item.Result="Replaced by a newer monthly schedule.";}var user=User.Identity?.Name??"Administrator";db.InvoiceSchedules.Add(new(){PublicationDay=publicationDay,GenerateAt=run,DueDays=dueDays,CreatedAt=DateTimeOffset.UtcNow,CreatedBy=user});db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=user,Action="Monthly invoice publication scheduled",EntityType="InvoiceSchedule",NewValue=$"Day {publicationDay}; next run {run:O}; due after {dueDays} days",Reason="Automatic monthly billing",SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});await db.SaveChangesAsync();TempData["BillingSuccess"]=$"Invoices will be published automatically on day {publicationDay} of every month.";return RedirectToPage(null,null,"tariffs");}
- public async Task<IActionResult>OnPostGenerateInvoices(DateOnly periodStart,DateOnly periodEnd,DateOnly invoiceDate,DateOnly dueDate,decimal fixedCharge=0,decimal otherCharge=0,decimal taxPercent=0,decimal discount=0)
- {
-  if(!CanManageBilling())return Forbid();
-  if(periodEnd<periodStart)return BillingError("Period end cannot be before period start.");
-  if(invoiceDate<periodEnd)return BillingError("Invoice date must be on or after the consumption period end.");
-  if(dueDate<invoiceDate)return BillingError("Due date cannot be before the invoice date.");
-  if(fixedCharge<0||otherCharge<0||discount<0||taxPercent<0||taxPercent>100)return BillingError("Charges and discount cannot be negative, and tax must be between 0 and 100%.");
-  if(await db.BillingPeriods.AnyAsync(x=>x.StartDate==periodStart&&x.EndDate==periodEnd))return BillingError("This billing period already exists.");
+    public List<Controller> Controllers { get; set; } = [];
+    public List<Shop> Shops { get; set; } = [];
+    public List<Meter> Meters { get; set; } = [];
+    public List<Tariff> Tariffs { get; set; } = [];
+    public List<MeterReading> Readings { get; set; } = [];
+    public List<BillingPeriod> BillingPeriods { get; set; } = [];
+    public List<Invoice> Invoices { get; set; } = [];
+    public List<InvoiceSchedule> InvoiceSchedules { get; set; } = [];
+    public InvoiceSchedule? ActiveSchedule => InvoiceSchedules.FirstOrDefault(x => !x.Completed);
+    public BillingPreview? Preview { get; private set; }
+    public DateOnly PreviewInvoiceDate { get; private set; }
+    public DateOnly Today => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(time.GetUtcNow(), TimeZoneInfo.Local).DateTime);
+    public bool TestClockActive => time is OffsetTimeProvider;
 
-  var start=AtStart(periodStart);var endExclusive=AtStart(periodEnd.AddDays(1));var issued=AtStart(invoiceDate);var due=AtStart(dueDate);
-  var meters=await db.Meters.Include(x=>x.Shop).Include(x=>x.Controller).Where(x=>x.Active).OrderBy(x=>x.Id).ToListAsync();
-  var waterEnabled=await db.SystemFeatureConfigurations.AsNoTracking().AnyAsync(x=>x.Id==1&&x.WaterBillingEnabled);if(!waterEnabled)meters=meters.Where(x=>x.UtilityType!=UtilityType.Water).ToList();
-  if(meters.Count==0)return BillingError("There are no active meters to bill.");
-  var readings=(await db.MeterReadings.ToListAsync()).Where(x=>x.Timestamp<endExclusive).OrderBy(x=>x.Timestamp).ToList();
-  var tariffs=await db.Tariffs.ToListAsync();
-  var priorInvoices=await db.Invoices.Include(x=>x.Payments).Where(x=>x.Status!=InvoiceStatus.Cancelled).ToListAsync();
-  var prepared=new List<PreparedInvoice>();var errors=new List<string>();
-  foreach(var meter in meters)
-  {
-   var meterReadings=readings.Where(x=>x.MeterId==meter.Id).ToList();
-   var openingRow=meterReadings.LastOrDefault(x=>x.Timestamp<start);
-   var closingRow=meterReadings.LastOrDefault(x=>x.Timestamp>=start&&x.Timestamp<endExclusive);
-   var bacnetError=BacnetBillingGuard.Validate(meter,meterReadings,closingRow,endExclusive);if(bacnetError is not null){errors.Add($"{meter.Name}: {bacnetError}");continue;}
-   if(closingRow is null){errors.Add($"{meter.Name}: no reading in the selected period");continue;}
-   Tariff tariff;try{tariff=tariffResolver.Resolve(tariffs,meter.Id,issued);}catch(InvalidOperationException){errors.Add($"{meter.Name}: no tariff effective on the invoice date");continue;}
-   var opening=openingRow?.AccumulatedKwh??meter.InitialReading;
-   var previous=AccountBalanceService.Outstanding(priorInvoices.Where(x=>x.MeterId==meter.Id));
-   BillingResult result;try{result=billingCalculator.Calculate(new(opening,closingRow.AccumulatedKwh,tariff.PricePerKwh,fixedCharge,otherCharge,taxPercent,discount,previous));}catch(InvalidOperationException ex){errors.Add($"{meter.Name}: {ex.Message}");continue;}
-   prepared.Add(new(meter,openingRow,closingRow,tariff,result,previous));
-  }
-  if(errors.Count>0)return BillingError("No invoices were created. " + string.Join("; ",errors));
+    // Manual billing defaults to the last fully completed cycle, never the month in progress.
+    public (DateOnly Start, DateOnly End) SuggestedPeriod => BillingCycle.LastCompletedPeriod(Today, ActiveSchedule?.CycleStartDay ?? 1);
+    public DateOnly SuggestedPeriodStart => SuggestedPeriod.Start;
+    public DateOnly SuggestedPeriodEnd => SuggestedPeriod.End;
+    public DateOnly SuggestedInvoiceDate => Today;
+    public DateOnly SuggestedDueDate => SuggestedInvoiceDate.AddDays(ActiveSchedule?.DueDays ?? 10);
 
-  await using var transaction=await db.Database.BeginTransactionAsync();
-  var period=new BillingPeriod{Number=$"BP-{periodStart:yyyyMM}",StartDate=periodStart,EndDate=periodEnd,Status=BillingStatus.Calculated,CreatedAt=DateTimeOffset.UtcNow,ResponsibleUser=User.Identity?.Name??"Administrator"};
-  db.BillingPeriods.Add(period);await db.SaveChangesAsync();
-  var nextInvoiceNumber=(await db.Invoices.Select(x=>(int?)x.Id).MaxAsync()??0)+1;
-  foreach(var item in prepared)
-  {
-   item.ClosingRow.UsedForBilling=true;if(item.OpeningRow is not null)item.OpeningRow.UsedForBilling=true;
-   db.Invoices.Add(new Invoice{InvoiceNumber=$"INV-{nextInvoiceNumber++:000000}",BillingPeriodId=period.Id,MeterId=item.Meter.Id,ShopId=item.Meter.ShopId,InvoiceDate=issued,DueDate=due,OpeningReading=item.Opening,ClosingReading=item.ClosingRow.AccumulatedKwh,ConsumptionKwh=item.Result.Consumption,TariffPerKwh=item.Tariff.PricePerKwh,EnergyCharge=item.Result.EnergyCharge,FixedCharges=fixedCharge,OtherCharges=otherCharge,Tax=item.Result.Tax,Discount=discount,PreviousBalance=item.PreviousBalance,Total=item.Result.Total,Currency=item.Tariff.Currency,Status=InvoiceStatus.Draft,Locked=false,SnapshotJson=System.Text.Json.JsonSerializer.Serialize(new{PeriodStart=periodStart,PeriodEnd=periodEnd,Tariff=item.Tariff.PricePerKwh,item.Tariff.Currency})});
-  }
-  db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=User.Identity?.Name??"Administrator",Action="Draft invoices generated",EntityType="BillingPeriod",EntityId=period.Id.ToString(),NewValue=$"{prepared.Count} invoices; invoice date {invoiceDate:yyyy-MM-dd}; due {dueDate:yyyy-MM-dd}",Reason="Monthly billing run",SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});
-  await db.SaveChangesAsync();await transaction.CommitAsync();TempData["BillingSuccess"]=$"{prepared.Count} draft invoice(s) created. Review them, then finalize the billing period.";return RedirectToPage(null,null,"billing");
- }
- public async Task<IActionResult>OnPostFinalizeInvoices(int periodId)
- {
-  if(!CanManageBilling())return Forbid();var period=await db.BillingPeriods.FindAsync(periodId);if(period is null)return BillingError("Billing period was not found.");if(period.Status is BillingStatus.Finalized or BillingStatus.Closed)return BillingError("This billing period is already finalized.");var invoices=await db.Invoices.Where(x=>x.BillingPeriodId==periodId).ToListAsync();if(invoices.Count==0)return BillingError("There are no invoices to finalize.");var autoEmail=await db.SmtpConfigurations.AsNoTracking().AnyAsync(x=>x.Enabled&&x.AutoSendPublishedInvoices);foreach(var invoice in invoices.Where(x=>x.Status==InvoiceStatus.Draft)){invoice.Status=InvoiceStatus.Finalized;invoice.Locked=true;invoice.AutoEmailRequested=autoEmail;}period.Status=BillingStatus.Finalized;period.FinalizedAt=DateTimeOffset.UtcNow;db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=User.Identity?.Name??"Administrator",Action="Invoices finalized",EntityType="BillingPeriod",EntityId=period.Id.ToString(),NewValue=$"{invoices.Count} invoices locked; automatic email={autoEmail}",Reason="Billing period approved",SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});await db.SaveChangesAsync();TempData["BillingSuccess"]=$"Billing period {period.Number} finalized. Its invoices are now published and locked.";return RedirectToPage(null,null,"billing");
- }
- public async Task<IActionResult>OnPostRecordPayment(int invoiceId,decimal amount,DateOnly paymentDate,string method,string referenceNumber,string notes){if(!CanManageBilling())return Forbid();var invoice=await db.Invoices.Include(x=>x.Payments).FirstOrDefaultAsync(x=>x.Id==invoiceId);if(invoice is null)return BillingError("Invoice was not found.");if(invoice.Status is InvoiceStatus.Draft or InvoiceStatus.Cancelled)return BillingError("Only published invoices can receive payments.");if(amount<=0||amount>invoice.Balance)return BillingError("Payment must be positive and cannot exceed the invoice balance.");var payment=new Payment{InvoiceId=invoice.Id,PaymentDate=AtStart(paymentDate),Amount=amount,Currency=invoice.Currency,Method=string.IsNullOrWhiteSpace(method)?"Cash":method.Trim(),ReferenceNumber=(referenceNumber??"").Trim(),ReceivedBy=User.Identity?.Name??"Administrator",Notes=(notes??"").Trim()};db.Payments.Add(payment);invoice.Payments.Add(payment);invoice.Status=AccountBalanceService.StatusAfterPayment(invoice,DateTimeOffset.Now);db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=payment.ReceivedBy,Action="Payment recorded",EntityType="Invoice",EntityId=invoice.Id.ToString(),NewValue=$"{invoice.Currency} {amount:N2} by {payment.Method}",Reason=string.IsNullOrWhiteSpace(payment.Notes)?"Customer payment":payment.Notes,SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});await db.SaveChangesAsync();TempData["BillingSuccess"]=$"Payment recorded for {invoice.InvoiceNumber}.";return RedirectToPage(null,null,"billing");}
- public async Task<IActionResult>OnGetCsv(){if(!(User.IsInRole("Administrator")||User.IsInRole("BillingManager")||User.IsInRole("Operator")))return Forbid();var rows=await db.MeterReadings.Include(x=>x.Meter).OrderBy(x=>x.Id).ToListAsync();var text="Timestamp,Meter,Raw,AccumulatedKwh,Source,Quality\r\n"+string.Join("\r\n",rows.Select(x=>$"{x.Timestamp:O},{x.Meter?.Name},{x.RawValue},{x.AccumulatedKwh},{x.Source},{x.Quality}"));return File(System.Text.Encoding.UTF8.GetBytes(text),"text/csv","meter-readings.csv");}
- public async Task<IActionResult>OnPostBackup(){if(!User.IsInRole("Administrator"))return Forbid();Directory.CreateDirectory(BackupPath);var sourcePath=paths.DatabasePath;var destinationPath=Path.Combine(BackupPath,$"watch-dog-em-{DateTime.Now:yyyyMMdd-HHmmss}.db");await maintenance.Gate.WaitAsync(HttpContext.RequestAborted);try{await db.Database.CloseConnectionAsync();await using var source=new SqliteConnection($"Data Source={sourcePath};Mode=ReadOnly");await using var destination=new SqliteConnection($"Data Source={destinationPath}");await source.OpenAsync();await destination.OpenAsync();source.BackupDatabase(destination);TempData["BackupSuccess"]=$"Backup created: {Path.GetFileName(destinationPath)}";}finally{maintenance.Gate.Release();}return RedirectToPage(null,null,"backup");}
- public async Task<IActionResult>OnPostRestore(string fileName){if(!User.IsInRole("Administrator"))return Forbid();if(string.IsNullOrWhiteSpace(fileName)||Path.GetFileName(fileName)!=fileName){TempData["BackupError"]="Invalid backup file.";return RedirectToPage(null,null,"backup");}var backupPath=Path.Combine(BackupPath,fileName);if(!System.IO.File.Exists(backupPath)){TempData["BackupError"]="Backup file was not found.";return RedirectToPage(null,null,"backup");}await maintenance.Gate.WaitAsync(HttpContext.RequestAborted);try{await db.Database.CloseConnectionAsync();SqliteConnection.ClearAllPools();await using var source=new SqliteConnection($"Data Source={backupPath};Mode=ReadOnly");await source.OpenAsync();await using(var check=source.CreateCommand()){check.CommandText="PRAGMA quick_check;";if(!string.Equals((string?)await check.ExecuteScalarAsync(),"ok",StringComparison.OrdinalIgnoreCase)){TempData["BackupError"]="The selected backup failed its integrity check.";return RedirectToPage(null,null,"backup");}}await using var destination=new SqliteConnection($"Data Source={paths.DatabasePath}");await destination.OpenAsync();source.BackupDatabase(destination);SqliteConnection.ClearAllPools();TempData["BackupSuccess"]=$"Restored {fileName}.";}finally{maintenance.Gate.Release();}return RedirectToPage(null,null,"backup");}
- void LoadBackups(){Directory.CreateDirectory(BackupPath);BackupFiles=new DirectoryInfo(BackupPath).GetFiles("*.db").OrderByDescending(x=>x.LastWriteTimeUtc).Select(x=>new BackupFile(x.Name,x.Length,x.LastWriteTime)).ToList();}
- bool CanManageBilling()=>User.IsInRole("Administrator")||User.IsInRole("BillingManager");
- IActionResult BillingError(string message){TempData["BillingError"]=message;return RedirectToPage(null,null,"billing");}
- static DateTimeOffset AtStart(DateOnly date){var value=date.ToDateTime(TimeOnly.MinValue);return new(value,TimeZoneInfo.Local.GetUtcOffset(value));}
- sealed record PreparedInvoice(Meter Meter,MeterReading? OpeningRow,MeterReading ClosingRow,Tariff Tariff,BillingResult Result,decimal PreviousBalance){public decimal Opening=>OpeningRow?.AccumulatedKwh??Meter.InitialReading;}
+    public string BackupPath => paths.BackupDirectory;
+    public List<BackupFile> BackupFiles { get; set; } = [];
+    public sealed record BackupFile(string Name, long Size, DateTime Modified);
+    public IReadOnlyList<string>Currencies{get;}=["UGX","USD","EUR","GBP","AED","AFN","ALL","AMD","ANG","AOA","ARS","AUD","AWG","AZN","BAM","BBD","BDT","BGN","BHD","BIF","BMD","BND","BOB","BRL","BSD","BTN","BWP","BYN","BZD","CAD","CDF","CHF","CLP","CNY","COP","CRC","CUP","CVE","CZK","DJF","DKK","DOP","DZD","EGP","ERN","ETB","FJD","FKP","GEL","GHS","GIP","GMD","GNF","GTQ","GYD","HKD","HNL","HTG","HUF","IDR","ILS","INR","IQD","IRR","ISK","JMD","JOD","JPY","KES","KGS","KHR","KMF","KPW","KRW","KWD","KYD","KZT","LAK","LBP","LKR","LRD","LSL","LYD","MAD","MDL","MGA","MKD","MMK","MNT","MOP","MRU","MUR","MVR","MWK","MXN","MYR","MZN","NAD","NGN","NIO","NOK","NPR","NZD","OMR","PAB","PEN","PGK","PHP","PKR","PLN","PYG","QAR","RON","RSD","RUB","RWF","SAR","SBD","SCR","SDG","SEK","SGD","SHP","SLE","SOS","SRD","SSP","STN","SVC","SYP","SZL","THB","TJS","TMT","TND","TOP","TRY","TTD","TWD","TZS","UAH","UYU","UZS","VES","VND","VUV","WST","XAF","XCD","XOF","XPF","YER","ZAR","ZMW","ZWL"];
+
+    public async Task OnGet()
+    {
+        Controllers = await db.Controllers.ToListAsync();
+        Shops = await db.Shops.ToListAsync();
+        Meters = await db.Meters.Include(x => x.Shop).Include(x => x.Controller).Where(x => x.CommunicationStatus != "Archived").ToListAsync();
+        Tariffs = await db.Tariffs.Include(x => x.Meter).OrderByDescending(x => x.Id).ToListAsync();
+        Readings = await db.MeterReadings.Include(x => x.Meter).OrderByDescending(x => x.Id).Take(100).ToListAsync();
+        BillingPeriods = (await db.BillingPeriods.ToListAsync()).OrderByDescending(x => x.StartDate).ToList();
+        InvoiceSchedules = (await db.InvoiceSchedules.ToListAsync()).OrderByDescending(x => x.GenerateAt).Take(20).ToList();
+        Invoices = (await db.Invoices.Include(x => x.Meter).ThenInclude(x => x!.Shop).Include(x => x.Payments).ToListAsync()).OrderByDescending(x => x.InvoiceDate).ToList();
+        foreach (var invoice in Invoices)
+        {
+            var status = AccountBalanceService.StatusAfterPayment(invoice, time.GetUtcNow());
+            if (status != invoice.Status) invoice.Status = status;
+        }
+        if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync();
+        LoadBackups();
+    }
+
+    public async Task<IActionResult> OnPostTariff(int meterId, decimal price, string currency, string reason)
+    {
+        if (!CanManageBilling()) return Forbid();
+        if (price <= 0) return BadRequest("A positive price is required.");
+        currency = (currency ?? "").Trim().ToUpperInvariant();
+        if (!ValidCurrency(currency)) return BadRequest("Select a valid three-letter ISO currency code.");
+        var meter = await db.Meters.FindAsync(meterId);
+        if (meter is null) return BadRequest("Select a valid meter.");
+        var auditReason = string.IsNullOrWhiteSpace(reason) ? "Not provided" : reason.Trim();
+        var old = await db.Tariffs.Where(x => x.MeterId == meterId).OrderByDescending(x => x.Id).FirstOrDefaultAsync();
+        db.Tariffs.Add(new Tariff { MeterId = meterId, PricePerKwh = price, Currency = currency, EffectiveFrom = time.GetLocalNow(), CreatedAt = time.GetUtcNow(), ChangedBy = UserName("Local administrator"), Reason = auditReason });
+        db.AuditLogs.Add(Audit("Meter tariff changed", "Meter", meterId.ToString(), old is null ? "none" : $"{old.Currency} {old.PricePerKwh}", $"{currency} {price}", auditReason));
+        await db.SaveChangesAsync();
+        TempData["BillingSuccess"] = $"Tariff saved for {meter.Name} and active from now.";
+        return RedirectToPage(null, null, "tariffs");
+    }
+
+    public async Task<IActionResult> OnPostSaveTariffAndSchedule(int meterId, decimal price, string currency, int cycleStartDay, int publishDelayDays, int dueDays = 10, string reason = "")
+    {
+        if (!CanManageBilling()) return Forbid();
+        if (price <= 0) return BillingError("Enter a positive tariff price.");
+        currency = (currency ?? "").Trim().ToUpperInvariant();
+        if (!ValidCurrency(currency)) return BillingError("Select a valid currency.");
+        if (ScheduleError(cycleStartDay, publishDelayDays, dueDays) is string error) return BillingError(error);
+        var meter = await db.Meters.FindAsync(meterId);
+        if (meter is null) return BillingError("Select a valid meter.");
+        var user = UserName("Administrator");
+        var auditReason = string.IsNullOrWhiteSpace(reason) ? "Settings updated" : reason.Trim();
+        var oldTariff = await db.Tariffs.Where(x => x.MeterId == meterId).OrderByDescending(x => x.Id).FirstOrDefaultAsync();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tariffs.Add(new() { MeterId = meterId, PricePerKwh = price, Currency = currency, EffectiveFrom = time.GetLocalNow(), CreatedAt = time.GetUtcNow(), ChangedBy = user, Reason = auditReason });
+        var schedule = await InvoiceSchedulerService.ReplaceScheduleAsync(db, time, cycleStartDay, publishDelayDays, dueDays, user);
+        db.AuditLogs.Add(Audit("Tariff and invoice schedule updated", "Meter", meterId.ToString(),
+            oldTariff is null ? "No tariff" : $"{oldTariff.Currency} {oldTariff.PricePerKwh}",
+            $"{currency} {price}; billing cycle {BillingCycle.Describe(cycleStartDay)}; publish {publishDelayDays} day(s) after period end; due after {dueDays} days; next run {schedule.GenerateAt:yyyy-MM-dd}", auditReason));
+        await db.SaveChangesAsync();
+        await transaction.CommitAsync();
+        TempData["BillingSuccess"] = $"{meter.Name} tariff saved. Billing cycle: {BillingCycle.Describe(cycleStartDay)}. Next publication: {schedule.GenerateAt.ToLocalTime():dd MMM yyyy}.";
+        return RedirectToPage(null, null, "tariffs");
+    }
+
+    public async Task<IActionResult> OnPostScheduleInvoices(int cycleStartDay, int publishDelayDays, int dueDays = 10)
+    {
+        if (!CanManageBilling()) return Forbid();
+        if (ScheduleError(cycleStartDay, publishDelayDays, dueDays) is string error) return BillingError(error);
+        var schedule = await InvoiceSchedulerService.ReplaceScheduleAsync(db, time, cycleStartDay, publishDelayDays, dueDays, UserName("Administrator"));
+        db.AuditLogs.Add(Audit("Monthly invoice publication scheduled", "InvoiceSchedule", "", "",
+            $"Billing cycle {BillingCycle.Describe(cycleStartDay)}; publish {publishDelayDays} day(s) after period end; next run {schedule.GenerateAt:O}; due after {dueDays} days", "Automatic monthly billing"));
+        await db.SaveChangesAsync();
+        TempData["BillingSuccess"] = $"Billing cycle: {BillingCycle.Describe(cycleStartDay)}. Next publication: {schedule.GenerateAt.ToLocalTime():dd MMM yyyy}.";
+        return RedirectToPage(null, null, "tariffs");
+    }
+
+    /// <summary>Shows exactly what a billing run would create, without saving anything.</summary>
+    public async Task<IActionResult> OnPostPreview(DateOnly? asOf, DateOnly? periodStart, DateOnly? periodEnd)
+    {
+        if (!CanManageBilling()) return Forbid();
+        await OnGet();
+        var schedule = ActiveSchedule;
+        DateOnly start, end, invoiceDate;
+        if (periodStart is DateOnly s && periodEnd is DateOnly e)
+        {
+            (start, end) = (s, e);
+            invoiceDate = end.AddDays(1 + (schedule?.PublishDelayDays ?? 0));
+        }
+        else
+        {
+            var cycleStart = BillingCycle.LatestCycleStart(asOf ?? Today, schedule?.CycleStartDay ?? 1);
+            (start, end) = BillingCycle.PeriodEndingBefore(cycleStart);
+            invoiceDate = cycleStart.AddDays(schedule?.PublishDelayDays ?? 0);
+        }
+        PreviewInvoiceDate = invoiceDate;
+        Preview = await billing.PreviewAsync(new BillingRunRequest(start, end, invoiceDate, invoiceDate.AddDays(schedule?.DueDays ?? 10)), allowUnfinishedPeriod: true, HttpContext.RequestAborted);
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostGenerateInvoices(DateOnly periodStart, DateOnly periodEnd, DateOnly invoiceDate, DateOnly dueDate, decimal fixedCharge = 0, decimal otherCharge = 0, decimal taxPercent = 0, decimal discount = 0)
+    {
+        if (!CanManageBilling()) return Forbid();
+        var outcome = await billing.GenerateAsync(new BillingRunRequest(periodStart, periodEnd, invoiceDate, dueDate, fixedCharge, otherCharge, taxPercent, discount,
+            Publish: false, User: UserName("Administrator"), SourceIp: SourceIp()), HttpContext.RequestAborted);
+        if (!outcome.Created) return BillingError(outcome.AlreadyExists ? "This billing period already exists." : outcome.Message);
+        TempData["BillingSuccess"] = $"{outcome.InvoiceCount} draft invoice(s) created. Review them, then finalize the billing period.";
+        return RedirectToPage(null, null, "billing");
+    }
+
+    public async Task<IActionResult> OnPostFinalizeInvoices(int periodId)
+    {
+        if (!CanManageBilling()) return Forbid();
+        var period = await db.BillingPeriods.FindAsync(periodId);
+        if (period is null) return BillingError("Billing period was not found.");
+        if (period.Status is BillingStatus.Finalized or BillingStatus.Closed) return BillingError("This billing period is already finalized.");
+        var invoices = await db.Invoices.Where(x => x.BillingPeriodId == periodId).ToListAsync();
+        if (invoices.Count == 0) return BillingError("There are no invoices to finalize.");
+        var autoEmail = await db.SmtpConfigurations.AsNoTracking().AnyAsync(x => x.Enabled && x.AutoSendPublishedInvoices);
+        foreach (var invoice in invoices.Where(x => x.Status == InvoiceStatus.Draft)) { invoice.Status = InvoiceStatus.Finalized; invoice.Locked = true; invoice.AutoEmailRequested = autoEmail; }
+        period.Status = BillingStatus.Finalized; period.FinalizedAt = time.GetUtcNow();
+        db.AuditLogs.Add(Audit("Invoices finalized", "BillingPeriod", period.Id.ToString(), "", $"{invoices.Count} invoices locked; automatic email={autoEmail}", "Billing period approved"));
+        await db.SaveChangesAsync();
+        TempData["BillingSuccess"] = $"Billing period {period.Number} finalized. Its invoices are now published and locked.";
+        return RedirectToPage(null, null, "billing");
+    }
+
+    public async Task<IActionResult> OnPostRecordPayment(int invoiceId, decimal amount, DateOnly paymentDate, string method, string referenceNumber, string notes)
+    {
+        if (!CanManageBilling()) return Forbid();
+        var invoice = await db.Invoices.Include(x => x.Payments).FirstOrDefaultAsync(x => x.Id == invoiceId);
+        if (invoice is null) return BillingError("Invoice was not found.");
+        if (invoice.Status is InvoiceStatus.Draft or InvoiceStatus.Cancelled) return BillingError("Only published invoices can receive payments.");
+        if (amount <= 0 || amount > invoice.Balance) return BillingError("Payment must be positive and cannot exceed the invoice balance.");
+        var payment = new Payment { InvoiceId = invoice.Id, PaymentDate = BillingCycle.LocalStart(paymentDate), Amount = amount, Currency = invoice.Currency, Method = string.IsNullOrWhiteSpace(method) ? "Cash" : method.Trim(), ReferenceNumber = (referenceNumber ?? "").Trim(), ReceivedBy = UserName("Administrator"), Notes = (notes ?? "").Trim() };
+        db.Payments.Add(payment); invoice.Payments.Add(payment);
+        invoice.Status = AccountBalanceService.StatusAfterPayment(invoice, time.GetUtcNow());
+        db.AuditLogs.Add(Audit("Payment recorded", "Invoice", invoice.Id.ToString(), "", $"{invoice.Currency} {amount:N2} by {payment.Method}", string.IsNullOrWhiteSpace(payment.Notes) ? "Customer payment" : payment.Notes));
+        await db.SaveChangesAsync();
+        TempData["BillingSuccess"] = $"Payment recorded for {invoice.InvoiceNumber}.";
+        return RedirectToPage(null, null, "billing");
+    }
+
+    public async Task<IActionResult> OnGetCsv()
+    {
+        if (!(User.IsInRole("Administrator") || User.IsInRole("BillingManager") || User.IsInRole("Operator"))) return Forbid();
+        var rows = await db.MeterReadings.AsNoTracking().Include(x => x.Meter).OrderBy(x => x.Id).ToListAsync();
+        var text = new StringBuilder("Timestamp,Meter,Raw,AccumulatedKwh,Source,Quality\r\n");
+        foreach (var x in rows) text.Append($"{x.Timestamp:O},{Csv(x.Meter?.Name)},{x.RawValue},{x.AccumulatedKwh},{x.Source},{Csv(x.Quality)}\r\n");
+        return File(Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(text.ToString())).ToArray(), "text/csv", "meter-readings.csv");
+    }
+
+    /// <summary>Quotes a CSV field when needed and neutralises spreadsheet formulas (=, +, -, @).</summary>
+    public static string Csv(string? value)
+    {
+        value ??= "";
+        if (value.Length > 0 && value[0] is '=' or '+' or '-' or '@' or '\t' or '\r') value = "'" + value;
+        return value.IndexOfAny([',', '"', '\r', '\n']) >= 0 ? "\"" + value.Replace("\"", "\"\"") + "\"" : value;
+    }
+
+    public async Task<IActionResult> OnPostBackup()
+    {
+        if (!User.IsInRole("Administrator")) return Forbid();
+        await maintenance.Gate.WaitAsync(HttpContext.RequestAborted);
+        try
+        {
+            await db.Database.CloseConnectionAsync();
+            TempData["BackupSuccess"] = $"Backup created: {await BackupToAsync($"watch-dog-em-{DateTime.Now:yyyyMMdd-HHmmss}.db")}";
+        }
+        finally { maintenance.Gate.Release(); }
+        return RedirectToPage(null, null, "backup");
+    }
+
+    public async Task<IActionResult> OnPostRestore(string fileName)
+    {
+        if (!User.IsInRole("Administrator")) return Forbid();
+        if (string.IsNullOrWhiteSpace(fileName) || Path.GetFileName(fileName) != fileName) { TempData["BackupError"] = "Invalid backup file."; return RedirectToPage(null, null, "backup"); }
+        var backupPath = Path.Combine(BackupPath, fileName);
+        if (!System.IO.File.Exists(backupPath)) { TempData["BackupError"] = "Backup file was not found."; return RedirectToPage(null, null, "backup"); }
+        await maintenance.Gate.WaitAsync(HttpContext.RequestAborted);
+        try
+        {
+            await db.Database.CloseConnectionAsync();
+            SqliteConnection.ClearAllPools();
+            await using (var source = new SqliteConnection($"Data Source={backupPath};Mode=ReadOnly"))
+            {
+                await source.OpenAsync();
+                await using (var check = source.CreateCommand())
+                {
+                    check.CommandText = "PRAGMA quick_check;";
+                    if (!string.Equals((string?)await check.ExecuteScalarAsync(), "ok", StringComparison.OrdinalIgnoreCase))
+                    { TempData["BackupError"] = "The selected backup failed its integrity check."; return RedirectToPage(null, null, "backup"); }
+                }
+                // Keep a copy of the current data first, so a wrong restore can be undone.
+                var safety = await BackupToAsync($"watch-dog-em-before-restore-{DateTime.Now:yyyyMMdd-HHmmss}.db");
+                maintenance.DatabaseReplaced();
+                await using var destination = new SqliteConnection($"Data Source={paths.DatabasePath}");
+                await destination.OpenAsync();
+                source.BackupDatabase(destination);
+                TempData["BackupSuccess"] = $"Restored {fileName}. The data from before the restore was saved as {safety}.";
+            }
+            SqliteConnection.ClearAllPools();
+            // A backup from an older version is upgraded to the current database structure straight away.
+            await db.Database.MigrateAsync();
+            maintenance.DatabaseReplaced();
+        }
+        finally { maintenance.Gate.Release(); }
+        return RedirectToPage(null, null, "backup");
+    }
+
+    async Task<string> BackupToAsync(string name)
+    {
+        Directory.CreateDirectory(BackupPath);
+        await using var source = new SqliteConnection($"Data Source={paths.DatabasePath};Mode=ReadOnly");
+        await using var destination = new SqliteConnection($"Data Source={Path.Combine(BackupPath, name)}");
+        await source.OpenAsync(); await destination.OpenAsync();
+        source.BackupDatabase(destination);
+        return name;
+    }
+
+    void LoadBackups()
+    {
+        Directory.CreateDirectory(BackupPath);
+        BackupFiles = new DirectoryInfo(BackupPath).GetFiles("*.db").OrderByDescending(x => x.LastWriteTimeUtc).Select(x => new BackupFile(x.Name, x.Length, x.LastWriteTime)).ToList();
+    }
+
+    static string? ScheduleError(int cycleStartDay, int publishDelayDays, int dueDays) =>
+        !BillingCycle.IsValidStartDay(cycleStartDay) ? $"Select a billing cycle start day from {BillingCycle.MinStartDay} to {BillingCycle.MaxStartDay}."
+        : !BillingCycle.IsValidPublishDelay(publishDelayDays) ? $"Publish invoices 0 to {BillingCycle.MaxPublishDelayDays} days after the period ends."
+        : dueDays is < 0 or > 365 ? "Payment due days must be between 0 and 365." : null;
+
+    static bool ValidCurrency(string currency) => currency.Length == 3 && currency.All(c => c is >= 'A' and <= 'Z');
+    bool CanManageBilling() => User.IsInRole("Administrator") || User.IsInRole("BillingManager");
+    string UserName(string fallback) => User.Identity?.Name ?? fallback;
+    string SourceIp() => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "";
+    AuditLog Audit(string action, string entityType, string entityId, string oldValue, string newValue, string reason) => new()
+    { Timestamp = time.GetUtcNow(), UserId = UserName("Administrator"), Action = action, EntityType = entityType, EntityId = entityId, OldValue = oldValue, NewValue = newValue, Reason = reason, SourceIp = SourceIp() };
+    IActionResult BillingError(string message) { TempData["BillingError"] = message; return RedirectToPage(null, null, "billing"); }
 }

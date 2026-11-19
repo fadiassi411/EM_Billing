@@ -109,9 +109,10 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
         db.Invoices.RemoveRange(await db.Invoices.Where(x => x.MeterId == meterId).ToListAsync());
         db.MeterReadings.RemoveRange(await db.MeterReadings.Where(x => x.MeterId == meterId).ToListAsync());
         db.Tariffs.RemoveRange(await db.Tariffs.Where(x => x.MeterId == meterId).ToListAsync());
-        db.AuditLogs.RemoveRange(await db.AuditLogs.Where(x => x.EntityType == "Meter" && x.EntityId == meterId.ToString()).ToListAsync());
+        // The audit trail is kept: financial history must stay traceable after a meter is deleted.
+        var deletedInvoices = string.Join(", ", await db.Invoices.Where(x => x.MeterId == meterId).Select(x => x.InvoiceNumber).ToListAsync());
         db.Meters.Remove(meter);
-        db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=User.Identity?.Name??"Administrator",Action="Meter permanently deleted",EntityType="DeletedMeter",EntityId=meterId.ToString(),OldValue=snapshot,NewValue="Meter and all dependent billing records deleted",Reason="Administrator typed DELETE",SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});
+        db.AuditLogs.Add(new(){Timestamp=DateTimeOffset.UtcNow,UserId=User.Identity?.Name??"Administrator",Action="Meter permanently deleted",EntityType="DeletedMeter",EntityId=meterId.ToString(),OldValue=snapshot,NewValue=deletedInvoices.Length==0?"Meter and all dependent records deleted":$"Meter and all dependent records deleted, including invoices {deletedInvoices}",Reason="Administrator typed DELETE",SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??""});
         await db.SaveChangesAsync();
         await transaction.CommitAsync();
         TempData["Success"]=$"{meter.Name} and all of its readings, tariffs, invoices, and payments were permanently deleted.";

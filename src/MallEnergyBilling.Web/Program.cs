@@ -1,5 +1,6 @@
 using MallEnergyBilling.Web.Data;
 using MallEnergyBilling.Web.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -48,7 +49,18 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AuthorizeFolder("/Admin/Features", "AdministratorOnly");
     o.Conventions.AuthorizeFolder("/Admin/License", "AdministratorOnly");
 });
-builder.Services.AddAuthorization(o => o.AddPolicy("AdministratorOnly", p => p.RequireRole("Administrator")));
+builder.Services.AddAuthorization(o =>
+{
+    o.AddPolicy("AdministratorOnly", p => p.RequireRole("Administrator"));
+    // Every page requires a signed-in user unless it is explicitly marked [AllowAnonymous] (login pages).
+    o.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
+});
+var clockOffsetDays = builder.Configuration.GetValue<double?>("Testing:ClockOffsetDays");
+if (builder.Environment.IsDevelopment() && clockOffsetDays is double offsetDays && offsetDays != 0)
+    builder.Services.AddSingleton<TimeProvider>(new OffsetTimeProvider(TimeSpan.FromDays(offsetDays)));
+else
+    builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<BillingRunService>();
 builder.Services.AddSingleton<BillingCalculator>();
 builder.Services.AddSingleton<TariffResolver>();
 builder.Services.AddSingleton<IModbusService, ModbusService>();
@@ -67,19 +79,33 @@ builder.Services.AddHostedService<InvoiceSchedulerService>();
 builder.Services.AddHostedService<AutomaticInvoiceEmailService>();
 
 var app = builder.Build();
+if (app.Services.GetRequiredService<TimeProvider>() is OffsetTimeProvider testClock)
+    app.Logger.LogWarning("TEST CLOCK ACTIVE: the application clock is shifted by {Offset}. Never use Testing:ClockOffsetDays on a live installation.", testClock.Offset);
 if (!app.Environment.IsDevelopment()) { app.UseExceptionHandler("/Error"); app.UseHsts(); }
 app.UseHttpsRedirection(); app.UseStaticFiles(); app.UseRouting(); app.UseAuthentication(); app.UseAuthorization();
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path.StartsWithSegments("/Identity/Account/Register"))
+    if (context.Request.Path.StartsWithSegments("/Identity/Account/Register") || context.Request.Path.StartsWithSegments("/Admin/Bootstrap"))
     {
         using var scope = context.RequestServices.CreateScope();
         var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
         if ((await users.GetUsersInRoleAsync("Administrator")).Any())
         {
-            context.Response.Redirect(context.User.IsInRole("Administrator")
-                ? "/Admin/Users"
-                : "/Identity/Account/Login");
+            if (context.Request.Path.StartsWithSegments("/Identity/Account/Register"))
+            {
+                context.Response.Redirect(context.User.IsInRole("Administrator")
+                    ? "/Admin/Users"
+                    : "/Identity/Account/Login");
+                return;
+            }
+        }
+        else if (!FirstRunSetup.IsLocalRequest(context))
+        {
+            // Until the first Administrator exists, setup is only allowed on the server computer itself,
+            // so nobody else on the network can register first and take over the system.
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            context.Response.ContentType = "text/plain; charset=utf-8";
+            await context.Response.WriteAsync("First-time setup must be done on the server computer. Open http://localhost:5080 on the Watchdog server to create the first Administrator.");
             return;
         }
     }
