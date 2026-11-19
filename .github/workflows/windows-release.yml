@@ -49,12 +49,27 @@ jobs:
           if (-not (Test-Path $installer)) { throw 'Expected installer was not generated' }
           $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $(Split-Path $installer -Leaf)" | Set-Content "$installer.sha256" -Encoding ascii
+      - name: Create zip package
+        run: |
+          # The installer zipped with its checksum and release notes, for email and download
+          # filters that block .exe files.
+          $installer = "dist/Watchdog-Energy-Management-Setup-$env:RELEASE_VERSION-win-x64.exe"
+          $zip = "dist/Watchdog-Energy-Management-Setup-$env:RELEASE_VERSION-win-x64.zip"
+          $staging = "outputs/zip-package"
+          New-Item -ItemType Directory -Force $staging | Out-Null
+          Copy-Item $installer, "$installer.sha256" $staging
+          Copy-Item "Documentation/releases/$env:RELEASE_VERSION.md" (Join-Path $staging "Release notes $env:RELEASE_VERSION.md")
+          if (Test-Path $zip) { Remove-Item $zip }
+          Compress-Archive -Path "$staging/*" -DestinationPath $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $(Split-Path $zip -Leaf)" | Set-Content "$zip.sha256" -Encoding ascii
       - name: Retain installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer
           path: |
             dist/*.exe
+            dist/*.zip
             dist/*.sha256
           if-no-files-found: error
       - name: Publish GitHub release
@@ -70,5 +85,6 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           $installer = "dist/Watchdog-Energy-Management-Setup-$env:RELEASE_VERSION-win-x64.exe"
-          gh release upload $tag $installer "$installer.sha256" --repo $repo --clobber
+          $zip = "dist/Watchdog-Energy-Management-Setup-$env:RELEASE_VERSION-win-x64.zip"
+          gh release upload $tag $installer "$installer.sha256" $zip "$zip.sha256" --repo $repo --clobber
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
