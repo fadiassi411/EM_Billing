@@ -263,7 +263,32 @@
     tick(); setInterval(tick, 15000);
   }
 
+  // ---------- one submission per click ----------
+  // A second click (or Enter) while a form is being sent would repeat the action, e.g. delete
+  // a meter that is already deleted. After a confirmed submit the form's buttons are locked
+  // until the next page loads; they unlock after 15 s in case the request never completes.
+  function setupSingleSubmit() {
+    document.addEventListener("submit", e => {
+      const form = e.target;
+      if (!(form instanceof HTMLFormElement) || e.defaultPrevented || (form.method || "").toLowerCase() !== "post") return;
+      if (form.dataset.submitting) { e.preventDefault(); return; }
+      form.dataset.submitting = "1";
+      const buttons = [...form.querySelectorAll("button, input[type=submit]")];
+      setTimeout(() => buttons.forEach(b => { b.disabled = true; b.setAttribute("aria-busy", "true"); }), 0);
+      setTimeout(() => { delete form.dataset.submitting; buttons.forEach(b => { b.disabled = false; b.removeAttribute("aria-busy"); }); }, 15000);
+    });
+    // Coming back with the browser Back button restores the page from cache: unlock it.
+    window.addEventListener("pageshow", e => {
+      if (!e.persisted) return;
+      document.querySelectorAll("form[data-submitting]").forEach(f => {
+        delete f.dataset.submitting;
+        f.querySelectorAll("button, input[type=submit]").forEach(b => { b.disabled = false; b.removeAttribute("aria-busy"); });
+      });
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
+    setupSingleSubmit();
     setupSidebar();
     colourStatuses();
     document.querySelectorAll("table[data-grid]").forEach(setupGrid);
