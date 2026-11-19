@@ -1,24 +1,19 @@
 @page
 @model MallEnergyBilling.Web.Areas.Identity.Pages.Account.LoginModel
-@{ ViewData["Title"] = "Login"; }
+@{ ViewData["Title"] = "Sign in"; }
 
-<section class="hero compact">
-    <div>
-        <span class="eyebrow">SECURE ACCESS</span>
-        <h1>User login</h1>
-        <p>Enter the username and password provided by the Administrator.</p>
+<section class="auth-card">
+    <div class="auth-brand">
+        <img src="~/images/watch-dog-logo-visible.png" alt="" />
+        <div><b>Watchdog Energy Management</b><small>Watch Every Watt</small></div>
     </div>
-</section>
-
-<section class="panel admin-form" style="max-width:720px;margin-inline:auto">
-    <h2>Sign in</h2>
-    <form method="post" asp-route-returnUrl="@Model.ReturnUrl">
+    <h1>Sign in</h1>
+    <p class="note">Use the username and password provided by your Administrator.</p>
+    <form method="post" asp-route-returnUrl="@Model.ReturnUrl" class="auth-form">
         <div asp-validation-summary="All" class="validation"></div>
-        <div class="form-grid">
-            <label>Username<input asp-for="Input.Username" autocomplete="username" autofocus /></label>
-            <label>Password<input asp-for="Input.Password" autocomplete="current-password" /></label>
-        </div>
-        <label><input asp-for="Input.RememberMe" /> Remember me on this computer</label>
-        <button type="submit">Login</button>
+        <label>Username<input asp-for="Input.Username" autocomplete="username" autofocus /></label>
+        <label>Password<input asp-for="Input.Password" autocomplete="current-password" /></label>
+        <label class="check"><input asp-for="Input.RememberMe" /> Keep me signed in on this computer</label>
+        <button type="submit">Sign in</button>
     </form>
 </section>

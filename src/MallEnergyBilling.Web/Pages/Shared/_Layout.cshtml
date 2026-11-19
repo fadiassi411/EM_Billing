@@ -1,16 +1,50 @@
 @inject MallEnergyBilling.Web.Services.SystemFeatureService Features
 @using System.Reflection
-@{var waterBillingEnabled=await Features.WaterBillingEnabledAsync();var appVersion=typeof(MallEnergyBilling.Web.Pages.IndexModel).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0]??"4.2.1";}
+@{
+    var waterBillingEnabled = await Features.WaterBillingEnabledAsync();
+    var appVersion = typeof(MallEnergyBilling.Web.Pages.IndexModel).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0] ?? "4.4.0";
+    var currentPage = ViewContext.RouteData.Values["page"] as string ?? "";
+    var signedIn = User.Identity?.IsAuthenticated == true;
+    var isAdmin = User.IsInRole("Administrator");
+    var userName = User.Identity?.Name ?? "";
+    var role = isAdmin ? "Administrator" : User.IsInRole("BillingManager") ? "Billing manager" : User.IsInRole("Operator") ? "Operator" : User.IsInRole("Viewer") ? "Viewer" : "No access level";
+    string Active(params string[] pages) => pages.Any(p => p == "/Index" ? currentPage == "/Index" : currentPage.StartsWith(p, StringComparison.OrdinalIgnoreCase)) ? "sb-link active" : "sb-link";
+    // Simple stroke icons (24x24), drawn inline so nothing is loaded from the internet.
+    var icons = new Dictionary<string, string>
+    {
+        ["dashboard"] = "<rect x='3' y='3' width='7' height='9' rx='1.5'/><rect x='14' y='3' width='7' height='5' rx='1.5'/><rect x='14' y='12' width='7' height='9' rx='1.5'/><rect x='3' y='16' width='7' height='5' rx='1.5'/>",
+        ["grid"] = "<path d='M13 2 4 14h7l-1 8 9-12h-7l1-8Z'/>",
+        ["generator"] = "<rect x='3' y='7' width='18' height='12' rx='2'/><path d='M7 7V4h10v3M8 13h3l-1 3 4-5h-3l1-3'/>",
+        ["water"] = "<path d='M12 3s6 6.6 6 11a6 6 0 0 1-12 0c0-4.4 6-11 6-11Z'/>",
+        ["operations"] = "<path d='M4 6h16M4 12h16M4 18h10'/><circle cx='18' cy='18' r='2'/>",
+        ["invoice"] = "<path d='M7 3h8l4 4v14H7z'/><path d='M15 3v4h4M10 12h6M10 16h6'/>",
+        ["shops"] = "<path d='M4 10h16v10H4zM3 6l2-3h14l2 3v2a2 2 0 0 1-4 0 2 2 0 0 1-4 0 2 2 0 0 1-4 0 2 2 0 0 1-4 0Z'/><path d='M10 20v-5h4v5'/>",
+        ["controller"] = "<rect x='4' y='4' width='16' height='16' rx='2'/><path d='M9 9h6v6H9zM9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2'/>",
+        ["features"] = "<path d='M4 7h10M18 7h2M4 17h4M12 17h8'/><circle cx='16' cy='7' r='2'/><circle cx='10' cy='17' r='2'/>",
+        ["license"] = "<circle cx='8' cy='15' r='4'/><path d='m11 12 9-9M16 7l3 3M14 9l2 2'/>",
+        ["users"] = "<circle cx='9' cy='8' r='3.5'/><path d='M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14a6 6 0 0 1 3 6'/>",
+        ["email"] = "<rect x='3' y='5' width='18' height='14' rx='2'/><path d='m3 7 9 6 9-6'/>",
+        ["audit"] = "<path d='M12 8v4l3 2'/><circle cx='12' cy='12' r='9'/>",
+        ["backup"] = "<ellipse cx='12' cy='6' rx='8' ry='3'/><path d='M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6'/>",
+        ["login"] = "<path d='M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3'/>",
+        ["help"] = "<circle cx='12' cy='12' r='9'/><path d='M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7M12 17h.01'/>",
+        ["about"] = "<circle cx='12' cy='12' r='9'/><path d='M12 11v6M12 7h.01'/>",
+        ["menu"] = "<path d='M4 6h16M4 12h16M4 18h16'/>"
+    };
+    Microsoft.AspNetCore.Html.IHtmlContent Icon(string name) => new Microsoft.AspNetCore.Html.HtmlString($"<svg viewBox='0 0 24 24' aria-hidden='true'>{icons[name]}</svg>");
+}
 <!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#0b1f2e" />
     <title>@ViewData["Title"] · Watchdog Energy Management</title>
     <link rel="icon" type="image/png" href="~/images/watch-dog-logo-visible.png" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/admin.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/watch-dog.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/app.css" asp-append-version="true" />
     <script>
         try {
             if (sessionStorage.getItem("watchDogSplashSeen")) {
@@ -28,17 +62,72 @@
             <small>By MicroBrain</small>
         </div>
     </div>
-    <header>
-        <a asp-page="/Index" class="brand">
-            <img src="~/images/watch-dog-logo-visible.png" alt="Watchdog Energy Management logo" />
-            <div>WATCHDOG ENERGY MANAGEMENT<small>Watch Every Watt</small></div>
-        </a>
-        <nav>
-            <details class="nav-menu"><summary>Main</summary><div><a asp-page="/Index">Dashboard</a>@if(User.Identity?.IsAuthenticated==true){<a asp-page="/PowerSources/Grid">⚡ Grid</a><a asp-page="/PowerSources/Generator">⌁ Generator</a>@if(waterBillingEnabled){<a class="water-nav-link" asp-page="/Water/Index">💧 Water</a>}<a asp-page="/Operations/Index">Operations</a><a asp-page="/Invoices/Index">Published invoices</a>}<a href="~/help/Watchdog-Energy-Management-Customer-User-Manual.pdf" target="_blank" rel="noopener">❓ Help</a><button type="button" class="nav-about-button" data-open-about>ⓘ About Watchdog</button></div></details>
-            <details class="nav-menu"><summary>Settings</summary><div>@if(User.IsInRole("Administrator")){<a asp-page="/Admin/Shops/Index">Shops</a><a asp-page="/Admin/Controllers/Index">Controller setup</a><a asp-page="/Admin/Features/Index">System features</a><a asp-page="/Admin/License/Index">License</a><a asp-page="/Admin/Users/Index">Users &amp; Access</a><a asp-page="/Admin/Email/Index">Invoice email</a><a asp-page="/Admin/Audit/Index">Audit trail</a><a asp-page="/Operations/Index" asp-fragment="backup">Backup &amp; restore</a>}else{<a asp-page="/Admin/Login">Administrator login</a>}</div></details>
-            <partial name="_LoginPartial" />
-        </nav>
-    </header>
+    <div class="app">
+        <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+            <a asp-page="/Index" class="sb-brand">
+                <img src="~/images/watch-dog-logo-visible.png" alt="" />
+                <span><b>Watchdog</b><small>Energy Management</small></span>
+            </a>
+            <nav class="sb-nav">
+                <div class="sb-group">Monitoring</div>
+                <a class="@Active("/Index")" asp-page="/Index">@Icon("dashboard")Dashboard</a>
+                @if(signedIn){
+                    <a class="@Active("/PowerSources/Grid")" asp-page="/PowerSources/Grid">@Icon("grid")Grid meters</a>
+                    <a class="@Active("/PowerSources/Generator")" asp-page="/PowerSources/Generator">@Icon("generator")Generator meters</a>
+                    @if(waterBillingEnabled){<a class="@Active("/Water") water" asp-page="/Water/Index">@Icon("water")Water meters</a>}
+                    <div class="sb-group">Billing</div>
+                    <a class="@Active("/Operations")" asp-page="/Operations/Index">@Icon("operations")Billing &amp; operations</a>
+                    <a class="@Active("/Invoices")" asp-page="/Invoices/Index">@Icon("invoice")Published invoices</a>
+                }
+                @if(isAdmin){
+                    <div class="sb-group">Settings</div>
+                    <a class="@Active("/Admin/Shops")" asp-page="/Admin/Shops/Index">@Icon("shops")Shops</a>
+                    <a class="@Active("/Admin/Controllers")" asp-page="/Admin/Controllers/Index">@Icon("controller")Controller setup</a>
+                    <a class="@Active("/Admin/Users")" asp-page="/Admin/Users/Index">@Icon("users")Users &amp; access</a>
+                    <a class="@Active("/Admin/Email")" asp-page="/Admin/Email/Index">@Icon("email")Invoice email</a>
+                    <a class="@Active("/Admin/Features")" asp-page="/Admin/Features/Index">@Icon("features")System features</a>
+                    <a class="@Active("/Admin/License")" asp-page="/Admin/License/Index">@Icon("license")License</a>
+                    <a class="@Active("/Admin/Audit")" asp-page="/Admin/Audit/Index">@Icon("audit")Audit trail</a>
+                    <a class="sb-link" asp-page="/Operations/Index" asp-fragment="backup">@Icon("backup")Backup &amp; restore</a>
+                }
+                else if(signedIn){
+                    <div class="sb-group">Settings</div>
+                    <a class="@Active("/Admin/Login")" asp-page="/Admin/Login">@Icon("login")Administrator login</a>
+                }
+            </nav>
+            <div class="sb-foot">
+                <a class="sb-link" href="~/help/Watchdog-Energy-Management-Customer-User-Manual.pdf" target="_blank" rel="noopener">@Icon("help")Help &amp; user manual</a>
+                <button type="button" class="sb-link" data-open-about>@Icon("about")About Watchdog</button>
+                <div class="sb-version">Version @appVersion</div>
+            </div>
+        </aside>
+        <div class="sidebar-backdrop" data-menu-close></div>
+        <div class="app-main">
+            <header class="topbar">
+                <button type="button" class="menu-toggle" data-menu-toggle aria-controls="sidebar" aria-expanded="false" aria-label="Open menu">@Icon("menu")</button>
+                <div class="topbar-title">@ViewData["Title"]</div>
+                <div class="topbar-spacer"></div>
+                <span class="topbar-clock" data-clock>@DateTime.Now.ToString("ddd dd MMM yyyy HH:mm")</span>
+                @if(signedIn){
+                    <details class="user-menu">
+                        <summary><span class="avatar">@(userName.Length > 0 ? userName[..1] : "?")</span><span class="user-name">@userName</span></summary>
+                        <div>
+                            <div class="user-role">Signed in as <b>@role</b></div>
+                            <a asp-area="Identity" asp-page="/Account/Manage/Index">Account &amp; password</a>
+                            <form asp-area="Identity" asp-page="/Account/Logout" asp-route-returnUrl="@Url.Page("/Index", new { area = "" })" method="post"><button type="submit">Sign out</button></form>
+                        </div>
+                    </details>
+                }else{
+                    <a class="login-link" asp-area="Identity" asp-page="/Account/Login">Sign in</a>
+                }
+            </header>
+            <main>@RenderBody()</main>
+            <footer class="app-footer">
+                <span>Watchdog Energy Management · Watch Every Watt</span>
+                <small class="watermark">MicroBrain by Fadi Assi</small>
+            </footer>
+        </div>
+    </div>
     <dialog id="aboutWatchDog" class="about-dialog" aria-labelledby="aboutWatchDogTitle">
         <div class="about-dialog-header">
             <img src="~/images/watch-dog-logo-visible.png" alt="Watchdog Energy Management logo" />
@@ -50,22 +139,17 @@
             <p>Watchdog Energy Management is a local Windows energy-metering and customer billing platform for commercial buildings and malls.</p>
             <dl>
                 <div><dt>Monitoring</dt><dd>Grid, Generator and optional Water meters</dd></div>
-                <div><dt>Communication</dt><dd>Modbus RTU and Modbus TCP/IP, including M-Bus meters through a Modbus gateway</dd></div>
-                <div><dt>Billing</dt><dd>Meter-specific tariffs, monthly invoices, PDF output and optional SMTP delivery</dd></div>
+                <div><dt>Communication</dt><dd>Modbus RTU, Modbus TCP/IP and BACnet/IP, including M-Bus meters through a Modbus gateway</dd></div>
+                <div><dt>Billing</dt><dd>Meter-specific tariffs, monthly billing cycles, PDF invoices and optional SMTP delivery</dd></div>
                 <div><dt>Access</dt><dd>Main Watchdog PC and browser monitoring across the same local network</dd></div>
             </dl>
             <p class="about-credit"><strong>Developed and published by MicroBrain</strong><br />Fadi Assi · © @DateTime.Now.Year</p>
         </div>
         <div class="about-dialog-footer"><button type="button" data-close-about>Close</button></div>
     </dialog>
-    <main>@RenderBody()</main>
-    <footer>
-        <span>Watchdog Energy Management · Watch Every Watt</span>
-        <small class="watermark">MicroBrain by Fadi Assi</small>
-        <span>System time @DateTime.Now.ToString("dd MMM yyyy HH:mm")</span>
-    </footer>
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
+    <script src="~/js/app.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", false)
 </body>
 </html>
