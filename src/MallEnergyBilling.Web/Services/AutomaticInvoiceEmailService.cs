@@ -8,12 +8,17 @@ public sealed class AutomaticInvoiceEmailService(IServiceScopeFactory scopes, IL
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            try { await SendPendingInvoices(stoppingToken); }
-            catch (Exception ex) { log.LogError(ex, "Automatic invoice email processing failed."); }
-            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                try { await SendPendingInvoices(stoppingToken); }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { throw; }
+                catch (Exception ex) { log.LogError(ex, "Automatic invoice email processing failed."); }
+                await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+            }
         }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
     }
 
     private async Task SendPendingInvoices(CancellationToken token)

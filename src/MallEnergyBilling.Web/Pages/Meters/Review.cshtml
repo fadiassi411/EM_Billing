@@ -1,0 +1,35 @@
+@page "/Meters/{id:int}/Review"
+@model MallEnergyBilling.Web.Pages.Meters.ReviewModel
+@{ ViewData["Title"] = $"{Model.Meter.Name} counter review"; }
+
+<section class="hero compact"><div><span class="eyebrow">COUNTER REVIEW</span><h1>@Model.Meter.Name</h1><p>@Model.Meter.Shop?.Name · @Model.Meter.Controller?.Name · current status @Model.Meter.DisplayStatus</p></div><div class="btn-row"><a class="button" href="/Meters/@Model.Meter.Id">Meter details</a></div></section>
+
+@if(TempData["ReviewSuccess"] is string ok){<div class="alert-success">@ok</div>}
+@if(TempData["ReviewError"] is string err){<div class="alert-error">@err</div>}
+
+<section class="panel">
+    <h2>Readings waiting for review</h2>
+    <p class="note">A cumulative counter should never go down. While a decrease is not resolved, this meter is not billed and the monthly run waits (it is retried every hour). Choose <b>Ignore reading</b> if it was a communication glitch, or <b>Accept new starting value</b> if the meter was really reset or replaced.</p>
+    @if(Model.PendingReviews.Count == 0){<p>No readings need review.</p>}
+    else{<div class="table-responsive"><table><thead><tr><th>Time</th><th>Value</th><th>Detail</th><th>Decision</th></tr></thead><tbody>
+    @foreach(var r in Model.PendingReviews){<tr><td>@r.Timestamp.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td><td>@r.AccumulatedKwh.ToString("N3") @Model.Meter.Unit</td><td>@r.Quality</td><td>
+        <form method="post" class="admin-form"><input type="hidden" name="readingId" value="@r.Id"/><label>Reason<input name="reason" required maxlength="300"/></label>
+        <button asp-page-handler="Ignore">Ignore reading</button>
+        <button asp-page-handler="Accept" onclick="return confirm('Accept @r.AccumulatedKwh.ToString("N3") as the new starting value of this meter? Use this only if the meter was reset or replaced.');">Accept new starting value</button></form>
+    </td></tr>}
+    </tbody></table></div>}
+</section>
+
+<section class="panel">
+    <h2>Meter replaced</h2>
+    <p class="note">Use this when a meter is physically replaced or its counter is reset on purpose. The next value read is stored as the new meter's starting value, so the drop is not billed and nothing is lost.</p>
+    <form method="post" asp-page-handler="Replaced" class="admin-form"><label>Reason<input name="reason" required maxlength="300"/></label><button>Next reading starts a new counter</button></form>
+    @if(Model.Meter.RebaseOnNextReading){<p class="note"><b>Waiting:</b> the next reading will be stored as the new starting value.</p>}
+</section>
+
+<section class="panel">
+    <h2>Recent readings</h2>
+    <div class="table-responsive"><table><thead><tr><th>Time</th><th>Value</th><th>Quality</th><th>Reason</th></tr></thead><tbody>
+    @foreach(var r in Model.RecentReadings){<tr><td>@r.Timestamp.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td><td>@r.AccumulatedKwh.ToString("N3")</td><td>@r.Quality</td><td>@r.Reason</td></tr>}
+    </tbody></table></div>
+</section>

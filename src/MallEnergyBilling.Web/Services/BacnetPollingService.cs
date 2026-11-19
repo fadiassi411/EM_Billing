@@ -61,10 +61,11 @@ public sealed class BacnetPollingService(IServiceScopeFactory scopes, IBacnetIpS
     private async Task PollCore(int id, CancellationToken ct)
     {
         using var scope = scopes.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        Controller? c; List<Meter> meters;
+        Controller? c; List<Meter> meters; int generation;
         await maintenance.Gate.WaitAsync(ct);
         try
         {
+            generation = maintenance.Generation;
             c = await db.Controllers.SingleOrDefaultAsync(x => x.Id == id, ct);
             meters = await db.Meters.Include(x => x.BacnetPoints).Where(x => x.ControllerId == id && x.Active).ToListAsync(ct);
         }
@@ -108,6 +109,13 @@ public sealed class BacnetPollingService(IServiceScopeFactory scopes, IBacnetIpS
             var point = energy[0];
             if (point.Quality != "Good" || point.LastValue is null) { meter.CommunicationStatus = "Stale"; continue; }
             var value = point.LastValue.Value;
+            if (meter.RebaseOnNextReading && value >= 0)
+            {
+                // After a meter replacement or point change, this value starts a new counter.
+                db.MeterReadings.Add(new() { MeterId = meter.Id, AccumulatedKwh = value, RawValue = point.LastRawValue is >= 0 and <= ulong.MaxValue ? (ulong)point.LastRawValue.Value : 0, Timestamp = point.LastSuccess!.Value, Source = ReadingSource.Automatic, Quality = BillingRunService.BaselineQuality, Reason = "New starting value after meter replacement or configuration change" });
+                meter.RebaseOnNextReading = false; meter.BacnetCounterReview = false; meter.LastReading = value; meter.LastReadingAt = point.LastSuccess;
+                continue;
+            }
             if (value < 0 || meter.LastReadingAt is not null && value < meter.LastReading)
             {
                 if (!meter.BacnetCounterReview)
@@ -119,14 +127,18 @@ public sealed class BacnetPollingService(IServiceScopeFactory scopes, IBacnetIpS
             }
             if (meter.BacnetCounterReview) { meter.CommunicationStatus = "Counter Review"; continue; }
             meter.LastReading = value; meter.LastReadingAt = point.LastSuccess;
-            var last = await db.MeterReadings.Where(x => x.MeterId == meter.Id).OrderByDescending(x => x.Id).FirstOrDefaultAsync(ct);
+            MeterReading? last;
+            await maintenance.Gate.WaitAsync(ct);
+            try { last = maintenance.Generation == generation ? await db.MeterReadings.Where(x => x.MeterId == meter.Id).OrderByDescending(x => x.Id).FirstOrDefaultAsync(ct) : null; }
+            finally { maintenance.Gate.Release(); }
             if (last is null || point.LastSuccess - last.Timestamp >= TimeSpan.FromMinutes(15))
                 db.MeterReadings.Add(new() { MeterId = meter.Id, AccumulatedKwh = value, RawValue = point.LastRawValue is >= 0 and <= ulong.MaxValue ? (ulong)point.LastRawValue.Value : 0, Timestamp = point.LastSuccess!.Value, Source = ReadingSource.Automatic, Quality = "Good" });
         }
         await maintenance.Gate.WaitAsync(ct);
         try
         {
-            // A commissioning edit during network I/O invalidates this cycle's results.
+            // A restore or a commissioning edit during network I/O invalidates this cycle's results.
+            if (maintenance.Generation != generation) return;
             using var verifyScope = scopes.CreateScope(); var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var current = await verifyDb.Controllers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct);
             if (current is null || !current.Enabled || Signature(current) != Signature(c)) return;

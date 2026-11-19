@@ -9,6 +9,8 @@ public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusServ
     readonly Dictionary<int, DateTimeOffset> nextPoll = [];
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
+        try
+        {
         while (!ct.IsCancellationRequested)
         {
             try
@@ -28,14 +30,16 @@ public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusServ
             catch (Exception ex) { log.LogError(ex, "Polling cycle failed; retrying"); }
             await Task.Delay(TimeSpan.FromSeconds(1), ct);
         }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
     }
 
     async Task PollController(int controllerId, CancellationToken ct)
     {
         using var scope = scopes.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        Controller? controller; List<Meter> meters;
+        Controller? controller; List<Meter> meters; int generation;
         await maintenance.Gate.WaitAsync(ct);
-        try { controller = await db.Controllers.FirstOrDefaultAsync(x => x.Id == controllerId, ct); meters = await db.Meters.Where(x => x.ControllerId == controllerId && x.Active).OrderBy(x => x.StartingRegister).ToListAsync(ct); }
+        try { generation = maintenance.Generation; controller = await db.Controllers.FirstOrDefaultAsync(x => x.Id == controllerId, ct); meters = await db.Meters.Where(x => x.ControllerId == controllerId && x.Active).OrderBy(x => x.StartingRegister).ToListAsync(ct); }
         finally { maintenance.Gate.Release(); }
         if (controller is null) return;
         nextPoll[controllerId] = DateTimeOffset.UtcNow.AddSeconds(Math.Max(1, controller.PollingIntervalSeconds));
@@ -60,6 +64,14 @@ public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusServ
                     value = ModbusValueConverter.ConvertValue(result.Registers, meter.DataType, meter.WordOrder, meter.ScalingFactor);
                     communicationDetail = $"{TransportName(controller)} request {result.RequestHex}; response {result.ResponseHex}";
                 }
+                // After a meter replacement or a channel configuration change, the first value starts a new counter.
+                if (meter.RebaseOnNextReading && value >= 0)
+                {
+                    db.MeterReadings.Add(new() { MeterId = meter.Id, RawValue = (ulong)Math.Max(0, value / meter.ScalingFactor), AccumulatedKwh = value, Timestamp = DateTimeOffset.UtcNow, Source = ReadingSource.Automatic, Quality = BillingRunService.BaselineQuality, Reason = "New starting value after meter replacement or configuration change" });
+                    meter.RebaseOnNextReading = false; meter.LastReading = value; meter.LastReadingAt = DateTimeOffset.UtcNow; meter.CommunicationStatus = "Connected";
+                    controller.LastSuccess = DateTimeOffset.UtcNow; controller.Condition = "Connected"; controller.Notes = $"Last {communicationDetail}";
+                    continue;
+                }
                 // A cumulative counter decrease is suspect, not a replacement reading.
                 // Preserve both the accepted value and its timestamp until it recovers.
                 if (value < 0 || value < meter.LastReading && meter.LastReadingAt is not null)
@@ -73,12 +85,19 @@ public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusServ
                     continue;
                 }
                 meter.LastReading = value; meter.LastReadingAt = DateTimeOffset.UtcNow; meter.CommunicationStatus = "Connected"; controller.LastSuccess = DateTimeOffset.UtcNow; controller.Condition = "Connected"; controller.Notes = $"Last {communicationDetail}";
-                await SaveHistoryIfDue(db, meter, ct);
+                await maintenance.Gate.WaitAsync(ct);
+                try { if (maintenance.Generation == generation) await SaveHistoryIfDue(db, meter, ct); }
+                finally { maintenance.Gate.Release(); }
             }
             catch (Exception ex) { meter.CommunicationStatus = "Failed"; controller.Condition = "Failed"; controller.Notes = ex.Message; transportFailed = true; log.LogWarning(ex, "{Transport} read failed for controller {Controller} on {Endpoint}; remaining channels skipped until next poll", TransportName(controller), controller.Name, controller.CommunicationType=="BacnetIp"?$"{controller.IpAddress}:{controller.BacnetUdpPort}":controller.CommunicationType=="ModbusTcp"?$"{controller.IpAddress}:{controller.TcpPort}":controller.ComPort); }
         }
         await maintenance.Gate.WaitAsync(ct);
-        try { await db.SaveChangesAsync(ct); }
+        try
+        {
+            // The database was restored while this controller was being read: drop these results.
+            if (maintenance.Generation != generation) { log.LogInformation("Discarding poll results for controller {Controller}: database was restored during the poll", controllerId); return; }
+            await db.SaveChangesAsync(ct);
+        }
         finally { maintenance.Gate.Release(); }
     }
 

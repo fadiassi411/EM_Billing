@@ -13,6 +13,8 @@
     <div class="metric"><span>Serial number</span><b>@Model.Meter.SerialNumber</b></div>
     <div class="metric"><span>Last reading</span><b>@(Model.Meter.LastReadingAt?.ToLocalTime().ToString("g") ?? "No recent reading")</b></div>
 </div>
+@if(Model.PendingReviews > 0 || Model.Meter.BacnetCounterReview){<div class="alert-error"><b>Counter decrease waiting for review.</b> This meter is not billed until it is resolved.@if(User.IsInRole("Administrator")){<text> </text><a href="/Meters/@Model.Meter.Id/Review">Resolve now</a>}</div>}
+@if(User.IsInRole("Administrator")){<p class="note"><a href="/Meters/@Model.Meter.Id/Review">Counter review / meter replaced</a></p>}
 
 @foreach(var chart in new[]{Model.DayChart,Model.MonthChart,Model.YearChart}){
 <section class="panel usage-chart-panel">
