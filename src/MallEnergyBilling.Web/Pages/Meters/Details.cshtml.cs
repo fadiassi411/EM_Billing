@@ -6,10 +6,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MallEnergyBilling.Web.Pages.Meters;
 
-public sealed class DetailsModel(ApplicationDbContext db) : PageModel
+public sealed class DetailsModel(ApplicationDbContext db, Services.PermissionService permissions) : PageModel
 {
     public Meter Meter { get; private set; } = null!;
     public int PendingReviews { get; private set; }
+    public bool CanReview { get; private set; }
+    public bool CanConfigure { get; private set; }
     public UsageChart DayChart { get; private set; } = UsageChart.Empty("Per Day", "No readings today");
     public UsageChart MonthChart { get; private set; } = UsageChart.Empty("Per Month", "No readings this month");
     public UsageChart YearChart { get; private set; } = UsageChart.Empty("Per Year", "No readings this year");
@@ -19,6 +21,8 @@ public sealed class DetailsModel(ApplicationDbContext db) : PageModel
         Meter = await db.Meters.Include(x => x.Shop).Include(x => x.Controller).Include(x => x.BacnetPoints).FirstOrDefaultAsync(x => x.Id == id && x.CommunicationStatus != "Archived") ?? null!;
         if (Meter is null) return NotFound();
 
+        CanConfigure = await permissions.HasAsync(User, Services.Permissions.ManageControllers);
+        CanReview = await permissions.HasAsync(User, Services.Permissions.ReviewCounters);
         PendingReviews = await db.MeterReadings.CountAsync(x => x.MeterId == id && x.RequiresReview);
         var readings = (await db.MeterReadings.Where(x => x.MeterId == id && !x.RequiresReview && x.Quality != Services.BillingRunService.RejectedQuality).ToListAsync())
             .OrderBy(x => x.Timestamp).ToList();

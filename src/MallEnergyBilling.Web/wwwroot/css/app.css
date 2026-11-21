@@ -305,3 +305,20 @@ button.sb-link { justify-content: flex-start; }
 button.sb-link:hover { background: #ffffff0f; }
 td { padding-top: 9px; padding-bottom: 9px; }
 td .button, td button { padding: 6px 12px; font-size: 12.5px; }
+
+/* user level permission matrix */
+.permission-matrix table { min-width: 720px; }
+.permission-matrix th.level-col, .permission-matrix td.level-col { width: 118px; text-align: center; }
+.permission-matrix th.level-col small { display: block; margin-top: 2px; font-size: 10.5px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--muted); }
+.permission-matrix tr.group-row td { padding: 8px 14px; background: var(--surface-2); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--teal-600); }
+.permission-matrix tbody tr:hover td { background: #f3faf9; }
+.perm-check { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; cursor: pointer; }
+.perm-check:hover { background: var(--teal-50); }
+.perm-check input { width: 18px; height: 18px; accent-color: var(--teal); cursor: pointer; }
+.perm-check input:disabled { cursor: not-allowed; opacity: .55; }
+.level-tools { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 20px; margin-top: 22px; }
+.level-create, .level-delete { padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+.level-create h3, .level-delete h3 { margin-top: 0; }
+.level-create .form-grid { grid-template-columns: 1fr 1fr; }
+.level-delete form { margin-bottom: 8px; }
+@media (max-width: 960px) { .level-tools, .level-create .form-grid { grid-template-columns: 1fr; } }

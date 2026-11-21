@@ -10,8 +10,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MallEnergyBilling.Web.Pages.Operations;
 
-public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMaintenanceService maintenance, BillingRunService billing, TimeProvider time) : PageModel
+public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMaintenanceService maintenance, BillingRunService billing, TimeProvider time, PermissionService permissions) : PageModel
 {
+    /// <summary>Permissions of the signed-in user, for showing only the sections they may use.</summary>
+    public HashSet<string> Allowed { get; private set; } = [];
+    public bool Can(string permission) => Allowed.Contains(permission);
+    async Task<bool> Has(string permission) => await permissions.HasAsync(User, permission);
+
     public List<Controller> Controllers { get; set; } = [];
     public List<Shop> Shops { get; set; } = [];
     public List<Meter> Meters { get; set; } = [];
@@ -40,6 +45,7 @@ public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMai
 
     public async Task OnGet()
     {
+        foreach (var permission in Permissions.All) if (await Has(permission.Key)) Allowed.Add(permission.Key);
         Controllers = await db.Controllers.ToListAsync();
         Shops = await db.Shops.ToListAsync();
         Meters = await db.Meters.Include(x => x.Shop).Include(x => x.Controller).Where(x => x.CommunicationStatus != "Archived").ToListAsync();
@@ -59,7 +65,7 @@ public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMai
 
     public async Task<IActionResult> OnPostTariff(int meterId, decimal price, string currency, string reason)
     {
-        if (!CanManageBilling()) return Forbid();
+        if (!await Has(Permissions.ManageTariffs)) return Forbid();
         if (price <= 0) return BadRequest("A positive price is required.");
         currency = (currency ?? "").Trim().ToUpperInvariant();
         if (!ValidCurrency(currency)) return BadRequest("Select a valid three-letter ISO currency code.");
@@ -76,7 +82,7 @@ public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMai
 
     public async Task<IActionResult> OnPostSaveTariffAndSchedule(int meterId, decimal price, string currency, int cycleStartDay, int publishDelayDays, int dueDays = 10, string reason = "")
     {
-        if (!CanManageBilling()) return Forbid();
+        if (!await Has(Permissions.ManageTariffs)) return Forbid();
         if (price <= 0) return BillingError("Enter a positive tariff price.");
         currency = (currency ?? "").Trim().ToUpperInvariant();
         if (!ValidCurrency(currency)) return BillingError("Select a valid currency.");
@@ -100,7 +106,7 @@ public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMai
 
     public async Task<IActionResult> OnPostScheduleInvoices(int cycleStartDay, int publishDelayDays, int dueDays = 10)
     {
-        if (!CanManageBilling()) return Forbid();
+        if (!await Has(Permissions.ManageTariffs)) return Forbid();
         if (ScheduleError(cycleStartDay, publishDelayDays, dueDays) is string error) return BillingError(error);
         var schedule = await InvoiceSchedulerService.ReplaceScheduleAsync(db, time, cycleStartDay, publishDelayDays, dueDays, UserName("Administrator"));
         db.AuditLogs.Add(Audit("Monthly invoice publication scheduled", "InvoiceSchedule", "", "",
@@ -113,7 +119,7 @@ public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMai
     /// <summary>Shows exactly what a billing run would create, without saving anything.</summary>
     public async Task<IActionResult> OnPostPreview(DateOnly? asOf, DateOnly? periodStart, DateOnly? periodEnd)
     {
-        if (!CanManageBilling()) return Forbid();
+        if (!await Has(Permissions.RunBilling)) return Forbid();
         await OnGet();
         var schedule = ActiveSchedule;
         DateOnly start, end, invoiceDate;
@@ -135,7 +141,7 @@ public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMai
 
     public async Task<IActionResult> OnPostGenerateInvoices(DateOnly periodStart, DateOnly periodEnd, DateOnly invoiceDate, DateOnly dueDate, decimal fixedCharge = 0, decimal otherCharge = 0, decimal taxPercent = 0, decimal discount = 0)
     {
-        if (!CanManageBilling()) return Forbid();
+        if (!await Has(Permissions.RunBilling)) return Forbid();
         var outcome = await billing.GenerateAsync(new BillingRunRequest(periodStart, periodEnd, invoiceDate, dueDate, fixedCharge, otherCharge, taxPercent, discount,
             Publish: false, User: UserName("Administrator"), SourceIp: SourceIp()), HttpContext.RequestAborted);
         if (!outcome.Created) return BillingError(outcome.AlreadyExists ? "This billing period already exists." : outcome.Message);
@@ -145,7 +151,7 @@ public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMai
 
     public async Task<IActionResult> OnPostFinalizeInvoices(int periodId)
     {
-        if (!CanManageBilling()) return Forbid();
+        if (!await Has(Permissions.RunBilling)) return Forbid();
         var period = await db.BillingPeriods.FindAsync(periodId);
         if (period is null) return BillingError("Billing period was not found.");
         if (period.Status is BillingStatus.Finalized or BillingStatus.Closed) return BillingError("This billing period is already finalized.");
@@ -162,7 +168,7 @@ public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMai
 
     public async Task<IActionResult> OnPostRecordPayment(int invoiceId, decimal amount, DateOnly paymentDate, string method, string referenceNumber, string notes)
     {
-        if (!CanManageBilling()) return Forbid();
+        if (!await Has(Permissions.RecordPayments)) return Forbid();
         var invoice = await db.Invoices.Include(x => x.Payments).FirstOrDefaultAsync(x => x.Id == invoiceId);
         if (invoice is null) return BillingError("Invoice was not found.");
         if (invoice.Status is InvoiceStatus.Draft or InvoiceStatus.Cancelled) return BillingError("Only published invoices can receive payments.");
@@ -178,7 +184,7 @@ public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMai
 
     public async Task<IActionResult> OnGetCsv()
     {
-        if (!(User.IsInRole("Administrator") || User.IsInRole("BillingManager") || User.IsInRole("Operator"))) return Forbid();
+        if (!await Has(Permissions.ExportReadings)) return Forbid();
         var rows = await db.MeterReadings.AsNoTracking().Include(x => x.Meter).OrderBy(x => x.Id).ToListAsync();
         var text = new StringBuilder("Timestamp,Meter,Raw,AccumulatedKwh,Source,Quality\r\n");
         foreach (var x in rows) text.Append($"{x.Timestamp:O},{Csv(x.Meter?.Name)},{x.RawValue},{x.AccumulatedKwh},{x.Source},{Csv(x.Quality)}\r\n");
@@ -195,7 +201,7 @@ public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMai
 
     public async Task<IActionResult> OnPostBackup()
     {
-        if (!User.IsInRole("Administrator")) return Forbid();
+        if (!await Has(Permissions.BackupRestore)) return Forbid();
         await maintenance.Gate.WaitAsync(HttpContext.RequestAborted);
         try
         {
@@ -208,7 +214,7 @@ public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMai
 
     public async Task<IActionResult> OnPostRestore(string fileName)
     {
-        if (!User.IsInRole("Administrator")) return Forbid();
+        if (!await Has(Permissions.BackupRestore)) return Forbid();
         if (string.IsNullOrWhiteSpace(fileName) || Path.GetFileName(fileName) != fileName) { TempData["BackupError"] = "Invalid backup file."; return RedirectToPage(null, null, "backup"); }
         var backupPath = Path.Combine(BackupPath, fileName);
         if (!System.IO.File.Exists(backupPath)) { TempData["BackupError"] = "Backup file was not found."; return RedirectToPage(null, null, "backup"); }
@@ -265,7 +271,6 @@ public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMai
         : dueDays is < 0 or > 365 ? "Payment due days must be between 0 and 365." : null;
 
     static bool ValidCurrency(string currency) => currency.Length == 3 && currency.All(c => c is >= 'A' and <= 'Z');
-    bool CanManageBilling() => User.IsInRole("Administrator") || User.IsInRole("BillingManager");
     string UserName(string fallback) => User.Identity?.Name ?? fallback;
     string SourceIp() => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "";
     AuditLog Audit(string action, string entityType, string entityId, string oldValue, string newValue, string reason) => new()

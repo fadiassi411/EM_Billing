@@ -12,7 +12,6 @@ namespace MallEnergyBilling.Web.Pages.Meters;
 /// Resolves suspect counter readings. Until a decrease is resolved the meter is not billed,
 /// so the administrator decides whether it was a glitch or a real meter reset/replacement.
 /// </summary>
-[Authorize(Policy = "AdministratorOnly")]
 public sealed class ReviewModel(ApplicationDbContext db, TimeProvider time) : PageModel
 {
     public Meter Meter { get; private set; } = null!;

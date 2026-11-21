@@ -1,4 +1,6 @@
 @inject MallEnergyBilling.Web.Services.SystemFeatureService Features
+@inject MallEnergyBilling.Web.Services.PermissionService Perms
+@using MallEnergyBilling.Web.Services
 @using System.Reflection
 @{
     var waterBillingEnabled = await Features.WaterBillingEnabledAsync();
@@ -7,7 +9,10 @@
     var signedIn = User.Identity?.IsAuthenticated == true;
     var isAdmin = User.IsInRole("Administrator");
     var userName = User.Identity?.Name ?? "";
-    var role = isAdmin ? "Administrator" : User.IsInRole("BillingManager") ? "Billing manager" : User.IsInRole("Operator") ? "Operator" : User.IsInRole("Viewer") ? "Viewer" : "No access level";
+    var role = User.FindAll(System.Security.Claims.ClaimTypes.Role).Select(x => Permissions.DisplayName(x.Value)).FirstOrDefault() ?? "No access level";
+    var allowed = new HashSet<string>();
+    foreach (var permission in Permissions.All) if (await Perms.HasAsync(User, permission.Key)) allowed.Add(permission.Key);
+    bool Can(string permission) => allowed.Contains(permission);
     string Active(params string[] pages) => pages.Any(p => p == "/Index" ? currentPage == "/Index" : currentPage.StartsWith(p, StringComparison.OrdinalIgnoreCase)) ? "sb-link active" : "sb-link";
     // Simple stroke icons (24x24), drawn inline so nothing is loaded from the internet.
     var icons = new Dictionary<string, string>
@@ -70,28 +75,30 @@
             </a>
             <nav class="sb-nav">
                 <div class="sb-group">Monitoring</div>
-                <a class="@Active("/Index")" asp-page="/Index">@Icon("dashboard")Dashboard</a>
-                @if(signedIn){
+                @if(Can(Permissions.ViewDashboard)){<a class="@Active("/Index")" asp-page="/Index">@Icon("dashboard")Dashboard</a>}
+                @if(Can(Permissions.ViewMeters)){
                     <a class="@Active("/PowerSources/Grid")" asp-page="/PowerSources/Grid">@Icon("grid")Grid meters</a>
                     <a class="@Active("/PowerSources/Generator")" asp-page="/PowerSources/Generator">@Icon("generator")Generator meters</a>
                     @if(waterBillingEnabled){<a class="@Active("/Water") water" asp-page="/Water/Index">@Icon("water")Water meters</a>}
+                }
+                @if(Can(Permissions.ViewOperations) || Can(Permissions.ViewInvoices)){
                     <div class="sb-group">Billing</div>
-                    <a class="@Active("/Operations")" asp-page="/Operations/Index">@Icon("operations")Billing &amp; operations</a>
-                    <a class="@Active("/Invoices")" asp-page="/Invoices/Index">@Icon("invoice")Published invoices</a>
+                    @if(Can(Permissions.ViewOperations)){<a class="@Active("/Operations")" asp-page="/Operations/Index">@Icon("operations")Billing &amp; operations</a>}
+                    @if(Can(Permissions.ViewInvoices)){<a class="@Active("/Invoices")" asp-page="/Invoices/Index">@Icon("invoice")Published invoices</a>}
                 }
-                @if(isAdmin){
+                @{var settingsLinks = isAdmin || new[]{Permissions.ManageShops,Permissions.ManageControllers,Permissions.ManageEmailSettings,Permissions.ManageFeatures,Permissions.ManageLicense,Permissions.ViewAudit,Permissions.BackupRestore}.Any(Can);}
+                @if(settingsLinks){
                     <div class="sb-group">Settings</div>
-                    <a class="@Active("/Admin/Shops")" asp-page="/Admin/Shops/Index">@Icon("shops")Shops</a>
-                    <a class="@Active("/Admin/Controllers")" asp-page="/Admin/Controllers/Index">@Icon("controller")Controller setup</a>
-                    <a class="@Active("/Admin/Users")" asp-page="/Admin/Users/Index">@Icon("users")Users &amp; access</a>
-                    <a class="@Active("/Admin/Email")" asp-page="/Admin/Email/Index">@Icon("email")Invoice email</a>
-                    <a class="@Active("/Admin/Features")" asp-page="/Admin/Features/Index">@Icon("features")System features</a>
-                    <a class="@Active("/Admin/License")" asp-page="/Admin/License/Index">@Icon("license")License</a>
-                    <a class="@Active("/Admin/Audit")" asp-page="/Admin/Audit/Index">@Icon("audit")Audit trail</a>
-                    <a class="sb-link" asp-page="/Operations/Index" asp-fragment="backup">@Icon("backup")Backup &amp; restore</a>
+                    @if(Can(Permissions.ManageShops)){<a class="@Active("/Admin/Shops")" asp-page="/Admin/Shops/Index">@Icon("shops")Shops</a>}
+                    @if(Can(Permissions.ManageControllers)){<a class="@Active("/Admin/Controllers")" asp-page="/Admin/Controllers/Index">@Icon("controller")Controller setup</a>}
+                    @if(isAdmin){<a class="@Active("/Admin/Users")" asp-page="/Admin/Users/Index">@Icon("users")Users &amp; access</a>}
+                    @if(Can(Permissions.ManageEmailSettings)){<a class="@Active("/Admin/Email")" asp-page="/Admin/Email/Index">@Icon("email")Invoice email</a>}
+                    @if(Can(Permissions.ManageFeatures)){<a class="@Active("/Admin/Features")" asp-page="/Admin/Features/Index">@Icon("features")System features</a>}
+                    @if(Can(Permissions.ManageLicense)){<a class="@Active("/Admin/License")" asp-page="/Admin/License/Index">@Icon("license")License</a>}
+                    @if(Can(Permissions.ViewAudit)){<a class="@Active("/Admin/Audit")" asp-page="/Admin/Audit/Index">@Icon("audit")Audit trail</a>}
+                    @if(Can(Permissions.BackupRestore)){<a class="sb-link" asp-page="/Operations/Index" asp-fragment="backup">@Icon("backup")Backup &amp; restore</a>}
                 }
-                else if(signedIn){
-                    <div class="sb-group">Settings</div>
+                @if(signedIn && !isAdmin){
                     <a class="@Active("/Admin/Login")" asp-page="/Admin/Login">@Icon("login")Administrator login</a>
                 }
             </nav>

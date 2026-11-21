@@ -1,40 +1,27 @@
 @page
 @model MallEnergyBilling.Web.Pages.Admin.Users.IndexModel
-@{ ViewData["Title"] = "Users & Access"; }
+@using MallEnergyBilling.Web.Services
+@{ ViewData["Title"] = "Users & access"; }
 
 <section class="hero compact">
     <div>
-        <span class="eyebrow">ADMINISTRATOR ONLY</span>
-        <h1>Users &amp; Access</h1>
-        <p>Create user accounts and assign one access level to each user.</p>
+        <span class="eyebrow">Administrator only</span>
+        <h1>Users &amp; access</h1>
+        <p>Create user accounts, give each one a user level, and choose with checkboxes what every level can monitor and control.</p>
     </div>
 </section>
 
 @if (TempData["Success"] is string success) { <div class="alert-success">@success</div> }
 @if (TempData["Error"] is string error) { <div class="alert-error">@error</div> }
 
-<section class="panel admin-form">
-    <h2>Add new user</h2>
-    <p class="note">The username and password are used to sign in. Email is stored only as contact information.</p>
-    <form method="post" asp-page-handler="Create">
-        <div asp-validation-summary="All" class="validation"></div>
-        <div class="form-grid">
-            <label>Username<input asp-for="NewUser.Username" autocomplete="off" placeholder="username" /></label>
-            <label>Email <small>Information only (optional)</small><input asp-for="NewUser.Email" autocomplete="off" placeholder="user@example.com" /></label>
-            <label>Access level<select asp-for="NewUser.AccessLevel">@foreach (var accessLevel in MallEnergyBilling.Web.Pages.Admin.Users.IndexModel.AccessLevels) { <option value="@accessLevel">@accessLevel</option> }</select></label>
-            <label>Temporary password<input asp-for="NewUser.Password" autocomplete="new-password" placeholder="Minimum 10 characters" /></label>
-            <label>Confirm password<input asp-for="NewUser.ConfirmPassword" autocomplete="new-password" /></label>
-        </div>
-        <button type="submit">Create user</button>
-    </form>
-</section>
+<div class="tabs"><a href="#users">Users</a><a href="#new-user">Add user</a><a href="#levels">User levels &amp; permissions</a></div>
 
-<section class="panel">
-    <h2>User access levels</h2>
+<section class="panel" id="users">
+    <div class="panel-title"><h2>Users</h2><span>@Model.Users.Count account(s)</span></div>
     <div asp-validation-summary="All" class="validation"></div>
     <div class="table-responsive">
-        <table>
-            <thead><tr><th>Username</th><th>Email information</th><th>Current access</th><th>New access level</th><th></th></tr></thead>
+        <table data-grid="users" data-grid-placeholder="Search username, email, level…">
+            <thead><tr><th>Username</th><th>Email information</th><th>Level</th><th data-sort="off">Change level</th><th data-sort="off"></th></tr></thead>
             <tbody>
             @if (Model.Users.Count == 0)
             {
@@ -45,21 +32,21 @@
                 <tr>
                     <td><b>@account.Username</b>@if (User.Identity?.Name == account.Username) { <small>Current account</small> }</td>
                     <td>@account.Email</td>
-                    <td><span class="status">@account.AccessLevel</span></td>
+                    <td><span class="status">@Permissions.DisplayName(account.AccessLevel)</span></td>
                     <td>
                         <form method="post" class="btn-row">
                             <input type="hidden" name="UserId" value="@account.Id" />
-                            <select name="AccessLevel" aria-label="Access level for @account.Username">
-                                @foreach (var accessLevel in MallEnergyBilling.Web.Pages.Admin.Users.IndexModel.AccessLevels)
+                            <select name="AccessLevel" aria-label="Level for @account.Username">
+                                @foreach (var level in Model.Levels)
                                 {
-                                    <option value="@accessLevel" selected="@(account.AccessLevel == accessLevel)">@accessLevel</option>
+                                    <option value="@level" selected="@(account.AccessLevel == level)">@Permissions.DisplayName(level)</option>
                                 }
                             </select>
-                            <button type="submit">Save access</button>
+                            <button type="submit" class="secondary">Save</button>
                         </form>
                     </td>
                     <td>
-                        <form method="post" asp-page-handler="Delete" onsubmit="return confirm('Are you sure you want to delete this user?');">
+                        <form method="post" asp-page-handler="Delete" onsubmit="return confirm('Delete user @account.Username?');">
                             <input type="hidden" name="userId" value="@account.Id" />
                             <button type="submit" class="danger-btn">Delete</button>
                         </form>
@@ -71,17 +58,114 @@
     </div>
 </section>
 
-<section class="panel">
-    <h2>Access level permissions</h2>
-    <div class="table-responsive">
-        <table>
-            <thead><tr><th>Access level</th><th>Permission</th></tr></thead>
-            <tbody>
-                <tr><td><b>Administrator</b></td><td>Full system configuration, controllers, meters, shops, billing, users, audit, backup and restore.</td></tr>
-                <tr><td><b>Billing Manager</b></td><td>Create, finalize and manage billing periods and invoices.</td></tr>
-                <tr><td><b>Operator</b></td><td>Operational pages and meter monitoring without administrator configuration.</td></tr>
-                <tr><td><b>Viewer</b></td><td>View permitted dashboards and operational information.</td></tr>
-            </tbody>
-        </table>
+<section class="panel admin-form" id="new-user">
+    <h2>Add user</h2>
+    <p class="note">The username and password are used to sign in. Email is stored only as contact information.</p>
+    <form method="post" asp-page-handler="Create">
+        <div class="form-grid">
+            <label>Username<input asp-for="NewUser.Username" autocomplete="off" placeholder="username" /></label>
+            <label>Email <small>Information only (optional)</small><input asp-for="NewUser.Email" autocomplete="off" placeholder="user@example.com" /></label>
+            <label>User level<select asp-for="NewUser.AccessLevel">@foreach (var level in Model.Levels) { <option value="@level">@Permissions.DisplayName(level)</option> }</select></label>
+            <label>Temporary password<input asp-for="NewUser.Password" autocomplete="new-password" placeholder="Minimum 10 characters" /></label>
+            <label>Confirm password<input asp-for="NewUser.ConfirmPassword" autocomplete="new-password" /></label>
+        </div>
+        <button type="submit">Create user</button>
+    </form>
+</section>
+
+<section class="panel" id="levels">
+    <div class="panel-title"><h2>User levels &amp; permissions</h2><span>Tick what each level may see or do, then press Save permissions.</span></div>
+    <p class="note"><b>Administrator</b> always has every permission and is the only level that can manage users and levels. Changes apply on the users' next click; no sign-out is needed. When you tick an action, the page it lives on is ticked automatically (for example <i>Record payments</i> also gives the <i>Billing &amp; operations page</i>).</p>
+
+    <form method="post" asp-page-handler="SavePermissions">
+        <div class="table-responsive permission-matrix">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Permission</th>
+                        @foreach (var level in Model.Levels)
+                        {
+                            <th class="level-col">@Permissions.DisplayName(level)<small>@Model.LevelUserCounts.GetValueOrDefault(level) user(s)</small></th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var group in Permissions.All.GroupBy(x => x.Group))
+                {
+                    <tr class="group-row"><td colspan="@(Model.Levels.Count + 1)">@group.Key</td></tr>
+                    @foreach (var permission in group)
+                    {
+                        <tr>
+                            <td><b>@permission.Name</b><small>@permission.Description</small></td>
+                            @foreach (var level in Model.Levels)
+                            {
+                                var isAdmin = level == Permissions.AdministratorRole;
+                                var granted = isAdmin || Model.LevelPermissions[level].Contains(permission.Key);
+                                <td class="level-col">
+                                    <label class="perm-check" title="@Permissions.DisplayName(level): @permission.Name">
+                                        <input type="checkbox" name="@(isAdmin ? "" : "grants")" value="@level|@permission.Key" checked="@granted" disabled="@isAdmin" data-level="@level" data-permission="@permission.Key" aria-label="@Permissions.DisplayName(level): @permission.Name" />
+                                    </label>
+                                </td>
+                            }
+                        </tr>
+                    }
+                }
+                    <tr class="group-row"><td colspan="@(Model.Levels.Count + 1)">Users</td></tr>
+                    <tr>
+                        <td><b>Users &amp; levels</b><small>Create users, change their level and edit these permissions.</small></td>
+                        @foreach (var level in Model.Levels)
+                        {
+                            <td class="level-col"><label class="perm-check"><input type="checkbox" disabled checked="@(level == Permissions.AdministratorRole)" aria-label="Users and levels: Administrator only" /></label></td>
+                        }
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="btn-row" style="margin-top:14px"><button type="submit">Save permissions</button></div>
+    </form>
+
+    <div class="level-tools">
+        <form method="post" asp-page-handler="CreateLevel" class="admin-form level-create">
+            <h3>Add a new level</h3>
+            <div class="form-grid">
+                <label>Level name<input name="levelName" maxlength="40" placeholder="e.g. Technician, Accountant, Tenant viewer" required /></label>
+                <label>Start with the permissions of
+                    <select name="copyFrom"><option value="">No permissions</option>@foreach (var level in Model.Levels.Where(x => x != Permissions.AdministratorRole)) { <option value="@level">@Permissions.DisplayName(level)</option> }</select>
+                </label>
+            </div>
+            <button type="submit">Add level</button>
+        </form>
+        @{ var customLevels = Model.Levels.Where(x => !MallEnergyBilling.Web.Pages.Admin.Users.IndexModel.IsBuiltIn(x)).ToList(); }
+        @if (customLevels.Count > 0)
+        {
+            <div class="level-delete">
+                <h3>Levels you created</h3>
+                @foreach (var level in customLevels)
+                {
+                    <form method="post" asp-page-handler="DeleteLevel" class="btn-row" onsubmit="return confirm('Delete the level @level?');">
+                        <input type="hidden" name="levelName" value="@level" />
+                        <span class="status">@level</span><small class="note">@Model.LevelUserCounts.GetValueOrDefault(level) user(s)</small>
+                        <button type="submit" class="danger-btn">Delete level</button>
+                    </form>
+                }
+                <p class="note">A level can only be deleted when no user has it.</p>
+            </div>
+        }
     </div>
 </section>
+
+@section Scripts{
+<script>
+// Mirror the server rule in the screen: ticking an action ticks the page it lives on,
+// and unticking a page unticks the actions that need it.
+(() => {
+    const requires = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Permissions.Requires));
+    const box = (level, permission) => document.querySelector(`input[data-level="${CSS.escape(level)}"][data-permission="${permission}"]`);
+    document.querySelectorAll(".permission-matrix input[name=grants]").forEach(input => input.addEventListener("change", () => {
+        const { level, permission } = input.dataset;
+        if (input.checked) (requires[permission] || []).forEach(p => { const b = box(level, p); if (b) b.checked = true; });
+        else Object.entries(requires).filter(([, needs]) => needs.includes(permission)).forEach(([p]) => { const b = box(level, p); if (b) b.checked = false; });
+    }));
+})();
+</script>
+}
