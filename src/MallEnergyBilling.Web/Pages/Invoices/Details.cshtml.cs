@@ -10,11 +10,11 @@ using Microsoft.EntityFrameworkCore;
 namespace MallEnergyBilling.Web.Pages.Invoices;
 
 [Authorize]
-public sealed class DetailsModel(ApplicationDbContext db, InvoicePdfService pdf, InvoiceEmailService email) : PageModel
+public sealed class DetailsModel(ApplicationDbContext db, InvoicePdfService pdf, InvoiceEmailService email, PermissionService permissions) : PageModel
 {
     public Invoice Invoice { get; private set; } = null!;
     public bool EmailEnabled { get; private set; }
-    public bool CanSendEmail => User.IsInRole("Administrator") || User.IsInRole("BillingManager");
+    public bool CanSendEmail { get; private set; }
     [BindProperty, EmailAddress] public string RecipientEmail { get; set; } = "";
 
     public async Task<IActionResult> OnGetAsync(int id)
@@ -22,6 +22,7 @@ public sealed class DetailsModel(ApplicationDbContext db, InvoicePdfService pdf,
         var invoice = await Load(id);
         if (invoice is null) return NotFound();
         Invoice = invoice;
+        CanSendEmail = await permissions.HasAsync(User, Permissions.EmailInvoices);
         RecipientEmail = invoice.Shop?.Email ?? "";
         EmailEnabled = await db.SmtpConfigurations.AnyAsync(x => x.Enabled);
         return Page();
@@ -36,7 +37,7 @@ public sealed class DetailsModel(ApplicationDbContext db, InvoicePdfService pdf,
 
     public async Task<IActionResult> OnPostSendEmailAsync(int id)
     {
-        if (!CanSendEmail) return Forbid();
+        if (!await permissions.HasAsync(User, Permissions.EmailInvoices)) return Forbid();
         var invoice = await Load(id);
         if (invoice is null) return NotFound();
         if (invoice.Status is InvoiceStatus.Draft or InvoiceStatus.Cancelled)

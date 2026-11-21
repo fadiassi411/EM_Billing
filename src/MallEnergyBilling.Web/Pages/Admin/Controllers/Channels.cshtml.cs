@@ -71,7 +71,6 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
     }
     public async Task<IActionResult> OnPostArchiveAsync(int id, int meterId)
     {
-        if (!User.IsInRole("Administrator")) return Forbid();
         var meter = await db.Meters.FirstOrDefaultAsync(x => x.Id == meterId && x.ControllerId == id);
         if (meter is null) return MeterGone(id, meterId);
         meter.Active = false;
@@ -83,7 +82,6 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
     }
     public async Task<IActionResult> OnPostRestoreMeterAsync(int id, int meterId)
     {
-        if (!User.IsInRole("Administrator")) return Forbid();
         var meter = await db.Meters.FirstOrDefaultAsync(x => x.Id == meterId && x.ControllerId == id && x.CommunicationStatus == "Archived");
         if (meter is null) return MeterGone(id, meterId);
         meter.CommunicationStatus = "Not commissioned";
@@ -94,7 +92,6 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
     }
     public async Task<IActionResult> OnPostPermanentDeleteAsync(int id, int meterId, string confirmation)
     {
-        if (!User.IsInRole("Administrator")) return Forbid();
         if (!string.Equals(confirmation, "DELETE", StringComparison.Ordinal))
         {
             TempData["Error"]="Permanent deletion was cancelled. Type DELETE exactly to confirm.";

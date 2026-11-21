@@ -38,20 +38,28 @@ builder.Services.AddDefaultIdentity<IdentityUser>(o =>
 builder.Services.ConfigureApplicationCookie(o => o.ExpireTimeSpan = TimeSpan.FromMinutes(30));
 builder.Services.AddRazorPages(o =>
 {
-    o.Conventions.AuthorizeFolder("/Operations");
-    o.Conventions.AuthorizeFolder("/PowerSources");
-    o.Conventions.AuthorizeFolder("/Water");
-    o.Conventions.AuthorizeFolder("/Admin/Controllers", "AdministratorOnly");
-    o.Conventions.AuthorizeFolder("/Admin/Shops", "AdministratorOnly");
-    o.Conventions.AuthorizeFolder("/Admin/Audit", "AdministratorOnly");
+    // Each area needs the matching permission. Administrators always pass; other levels get
+    // their permissions from Settings > Users & access > User levels.
+    o.Conventions.AuthorizeFolder("/Operations", Permissions.PolicyName(Permissions.ViewOperations));
+    o.Conventions.AuthorizeFolder("/PowerSources", Permissions.PolicyName(Permissions.ViewMeters));
+    o.Conventions.AuthorizeFolder("/Water", Permissions.PolicyName(Permissions.ViewMeters));
+    o.Conventions.AuthorizePage("/Meters/Details", Permissions.PolicyName(Permissions.ViewMeters));
+    o.Conventions.AuthorizePage("/Meters/Review", Permissions.PolicyName(Permissions.ReviewCounters));
+    o.Conventions.AuthorizeFolder("/Invoices", Permissions.PolicyName(Permissions.ViewInvoices));
+    o.Conventions.AuthorizeFolder("/Admin/Controllers", Permissions.PolicyName(Permissions.ManageControllers));
+    o.Conventions.AuthorizeFolder("/Admin/Shops", Permissions.PolicyName(Permissions.ManageShops));
+    o.Conventions.AuthorizeFolder("/Admin/Audit", Permissions.PolicyName(Permissions.ViewAudit));
+    o.Conventions.AuthorizeFolder("/Admin/Email", Permissions.PolicyName(Permissions.ManageEmailSettings));
+    o.Conventions.AuthorizeFolder("/Admin/Features", Permissions.PolicyName(Permissions.ManageFeatures));
+    o.Conventions.AuthorizeFolder("/Admin/License", Permissions.PolicyName(Permissions.ManageLicense));
+    // Users and user levels stay with Administrators, so nobody can give themselves more rights.
     o.Conventions.AuthorizeFolder("/Admin/Users", "AdministratorOnly");
-    o.Conventions.AuthorizeFolder("/Admin/Email", "AdministratorOnly");
-    o.Conventions.AuthorizeFolder("/Admin/Features", "AdministratorOnly");
-    o.Conventions.AuthorizeFolder("/Admin/License", "AdministratorOnly");
 });
 builder.Services.AddAuthorization(o =>
 {
     o.AddPolicy("AdministratorOnly", p => p.RequireRole("Administrator"));
+    foreach (var permission in Permissions.All)
+        o.AddPolicy(Permissions.PolicyName(permission.Key), p => p.RequireAuthenticatedUser().AddRequirements(new PermissionRequirement(permission.Key)));
     // Every page requires a signed-in user unless it is explicitly marked [AllowAnonymous] (login pages).
     o.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
 });
@@ -61,6 +69,10 @@ if (builder.Environment.IsDevelopment() && clockOffsetDays is double offsetDays 
 else
     builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<BillingRunService>();
+builder.Services.AddSingleton<PermissionService>();
+builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, PermissionHandler>();
+// A changed access level reaches signed-in users within a minute.
+builder.Services.Configure<SecurityStampValidatorOptions>(o => o.ValidationInterval = TimeSpan.FromMinutes(1));
 builder.Services.AddSingleton<BillingCalculator>();
 builder.Services.AddSingleton<TariffResolver>();
 builder.Services.AddSingleton<IModbusService, ModbusService>();
@@ -132,6 +144,7 @@ using (var scope = app.Services.CreateScope())
     var roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     foreach (var role in new[] { "Administrator", "BillingManager", "Operator", "Viewer" })
         if (!await roles.RoleExistsAsync(role)) await roles.CreateAsync(new IdentityRole(role));
+    await app.Services.GetRequiredService<PermissionService>().SeedDefaultsAsync(roles);
 }
 app.Run();
 

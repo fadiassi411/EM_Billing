@@ -23,7 +23,7 @@
 </section>
 
 <div class="cards" id="kpis" data-live>
-    <a class="metric" asp-page="/Admin/Shops/Index"><span>Shops</span><b>@Model.Shops</b><small>registered</small></a>
+    @if(Model.CanManageShops){<a class="metric" asp-page="/Admin/Shops/Index"><span>Shops</span><b>@Model.Shops</b><small>registered</small></a>}else{<div class="metric"><span>Shops</span><b>@Model.Shops</b><small>registered</small></div>}
     <div class="metric m-info"><span>Active meters</span><b>@active</b><small>on @controllers controller(s)</small></div>
     <div class="metric m-ok"><span>Meters online</span><b>@connected</b><small>@(active == 0 ? "—" : $"{connected * 100 / Math.Max(1, Model.Meters.Count)} % of meters")</small></div>
     <div class="metric @(failures > 0 ? "m-bad" : "m-ok")"><span>Meter alarms</span><b>@failures</b><small>@(failures > 0 ? "need attention" : "all clear")</small></div>
@@ -54,6 +54,7 @@
     </div>
 </section>
 
+@if(Model.CanViewInvoices){
 <section class="panel">
     <div class="panel-title"><h2>Invoice register</h2><a asp-page="/Invoices/Index">All published invoices →</a></div>
     <div class="table-responsive">
@@ -77,4 +78,5 @@
         </table>
     </div>
 </section>
+}
 <div data-live-refresh="10" hidden></div>
