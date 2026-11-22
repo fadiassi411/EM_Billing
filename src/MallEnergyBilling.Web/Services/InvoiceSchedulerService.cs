@@ -5,13 +5,16 @@ using Microsoft.EntityFrameworkCore;
 namespace MallEnergyBilling.Web.Services;
 
 /// <summary>
-/// Publishes the invoices of each completed billing cycle. A schedule only moves on to the next
-/// month after its period is billed; if any meter is not ready, the run is retried every hour and
-/// the reason is shown on the Operations page, so a month can never be skipped silently.
+/// Publishes the invoices of each completed billing cycle. Every meter that is ready is billed on time;
+/// a meter with a problem (no tariff, no reading, counter to review) waits on its own and is retried
+/// every few minutes, so one meter never holds back the other shops. If the run itself cannot start
+/// (for example overlapping dates), it is retried every hour and the month is never skipped silently.
 /// </summary>
 public sealed class InvoiceSchedulerService(IServiceScopeFactory scopes, TimeProvider time, ILogger<InvoiceSchedulerService> log) : BackgroundService
 {
     public static readonly TimeSpan RetryInterval = TimeSpan.FromHours(1);
+    public static readonly TimeSpan WaitingMeterInterval = TimeSpan.FromMinutes(5);
+    DateTimeOffset nextWaitingCheck = DateTimeOffset.MinValue;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -28,8 +31,20 @@ public sealed class InvoiceSchedulerService(IServiceScopeFactory scopes, TimePro
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
     }
 
-    /// <summary>Runs every schedule that is due. Public so tests can drive it with a fake clock.</summary>
+    /// <summary>Runs every schedule that is due, then retries meters that are waiting. Public so tests can drive it with a fake clock.</summary>
     public async Task RunDueSchedulesAsync(CancellationToken token = default)
+    {
+        await RunSchedulesAsync(token);
+        var now = time.GetUtcNow();
+        // A check "in the future" means the PC clock was moved back: check now.
+        if (now < nextWaitingCheck && nextWaitingCheck - now <= WaitingMeterInterval) return;
+        nextWaitingCheck = now + WaitingMeterInterval;
+        using var scope = scopes.CreateScope();
+        var outcome = await scope.ServiceProvider.GetRequiredService<BillingRunService>().BillWaitingMetersAsync(ct: token);
+        if (outcome.Created) log.LogInformation("Waiting meters: {Result}", outcome.Message);
+    }
+
+    async Task RunSchedulesAsync(CancellationToken token)
     {
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
