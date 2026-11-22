@@ -487,6 +487,9 @@ namespace MallEnergyBilling.Web.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal>("Offset")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("PowerSource")
                         .HasColumnType("INTEGER");
 

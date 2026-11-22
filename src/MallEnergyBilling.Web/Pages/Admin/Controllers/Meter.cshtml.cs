@@ -20,6 +20,11 @@ public sealed class MeterModel(ApplicationDbContext db, LicenseService licenses,
     public MBusTelegram? MBusAnswer { get; private set; }
     public int? MBusBilledRecord { get; private set; }
     public string? MBusReadError { get; private set; }
+    /// <summary>The meter's last accepted reading (with the saved offset), used by "Match the meter display".</summary>
+    public decimal LastReading { get; private set; }
+    public DateTimeOffset? LastReadingAt { get; private set; }
+    public decimal SavedOffset { get; private set; }
+    public string Unit => Input.UtilityType == UtilityType.Water ? "m³" : "kWh";
 
     public sealed class InputModel
     {
@@ -42,6 +47,7 @@ public sealed class MeterModel(ApplicationDbContext db, LicenseService licenses,
         public bool CtAppliedByPlc { get; set; }
         [StringLength(20)] public string? MBusSecondaryAddress { get; set; } = "";
         [Range(0, 250)] public int MBusRecord { get; set; }
+        [Range(typeof(decimal), "-1000000000", "1000000000")] public decimal Offset { get; set; }
         public string? Notes { get; set; } = "";
         public string? Reason { get; set; } = "";
     }
@@ -57,7 +63,7 @@ public sealed class MeterModel(ApplicationDbContext db, LicenseService licenses,
             Id = m.Id, Name = m.Name, SerialNumber = m.SerialNumber, ShopId = m.ShopId, UtilityType = m.UtilityType, PowerSource = m.PowerSource, Active = m.Active,
             StartingRegister = m.StartingRegister, BacnetObjectType = m.BacnetObjectType, BacnetObjectInstance = m.BacnetObjectInstance, DataType = m.DataType, WordOrder = m.WordOrder,
             ScalingFactor = m.ScalingFactor, PulseConstant = m.PulseConstant, CtPrimary = m.CtPrimary, CtSecondary = m.CtSecondary, CtAppliedByPlc = m.CtAppliedByPlc,
-            MBusSecondaryAddress = m.MBusSecondaryAddress, MBusRecord = m.MBusRecord, Notes = m.Notes
+            MBusSecondaryAddress = m.MBusSecondaryAddress, MBusRecord = m.MBusRecord, Offset = m.Offset, Notes = m.Notes
         };
         return Page();
     }
@@ -123,7 +129,7 @@ public sealed class MeterModel(ApplicationDbContext db, LicenseService licenses,
         }
         var measurementChanged = m.StartingRegister != Input.StartingRegister || m.BacnetObjectType != Input.BacnetObjectType || m.BacnetObjectInstance != Input.BacnetObjectInstance
             || m.DataType != Input.DataType || m.WordOrder != Input.WordOrder || m.ScalingFactor != Input.ScalingFactor
-            || m.MBusSecondaryAddress != secondary || m.MBusRecord != Input.MBusRecord
+            || m.MBusSecondaryAddress != secondary || m.MBusRecord != Input.MBusRecord || m.Offset != Input.Offset
             || IsMBus && m.UtilityType != Input.UtilityType; // energy vs volume record
         var old = JsonSerializer.Serialize(m);
         m.Name = Input.Name.Trim(); m.SerialNumber = Input.SerialNumber.Trim(); m.ShopId = Input.ShopId; m.UtilityType = Input.UtilityType; m.PowerSource = Input.PowerSource; m.Active = Input.Active;
@@ -131,7 +137,7 @@ public sealed class MeterModel(ApplicationDbContext db, LicenseService licenses,
         if (measurementChanged && await db.MeterReadings.AnyAsync(x => x.MeterId == m.Id)) m.RebaseOnNextReading = true;
         m.StartingRegister = Input.StartingRegister; m.BacnetObjectType = Input.BacnetObjectType; m.BacnetObjectInstance = Input.BacnetObjectInstance; m.DataType = Input.DataType; m.WordOrder = Input.WordOrder;
         m.ScalingFactor = Input.ScalingFactor; m.PulseConstant = Input.PulseConstant; m.CtPrimary = Input.CtPrimary; m.CtSecondary = Input.CtSecondary; m.CtAppliedByPlc = Input.CtAppliedByPlc;
-        m.MBusSecondaryAddress = secondary; m.MBusRecord = Input.MBusRecord; m.Notes = Input.Notes?.Trim() ?? "";
+        m.MBusSecondaryAddress = secondary; m.MBusRecord = Input.MBusRecord; m.Offset = Input.Offset; m.Notes = Input.Notes?.Trim() ?? "";
         if (m.CommunicationStatus != "Counter Review" || !m.Active) m.CommunicationStatus = m.Active ? "Awaiting poll" : "Not commissioned";
         db.AuditLogs.Add(new() { Timestamp = DateTimeOffset.UtcNow, UserId = User.Identity?.Name ?? "Administrator", Action = "Meter channel configuration changed", EntityType = "Meter", EntityId = m.Id.ToString(), OldValue = old, NewValue = JsonSerializer.Serialize(Input), Reason = string.IsNullOrWhiteSpace(Input.Reason) ? "Not provided" : Input.Reason.Trim(), SourceIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "" });
         await db.SaveChangesAsync();
@@ -147,6 +153,6 @@ public sealed class MeterModel(ApplicationDbContext db, LicenseService licenses,
         return null;
     }
 
-    void SetController(Meter m) { ControllerName = m.Controller?.Name ?? ""; ControllerCommunicationType = m.Controller?.CommunicationType ?? ""; }
+    void SetController(Meter m) { ControllerName = m.Controller?.Name ?? ""; ControllerCommunicationType = m.Controller?.CommunicationType ?? ""; LastReading = m.LastReading; LastReadingAt = m.LastReadingAt; SavedOffset = m.Offset; }
     async Task LoadShops() => Shops = await db.Shops.OrderBy(x => x.ShopNumber).ToListAsync();
 }

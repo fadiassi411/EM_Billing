@@ -433,3 +433,7 @@ input[type=file]::file-selector-button:hover { background: var(--teal-50); borde
 
 /* M-Bus meter answer (4.7.0) */
 .mbus-answer tr.is-billed td { background: var(--teal-50); font-weight: 650; }
+/* meter offset (4.7.1) */
+.offset-match { border: 1px solid var(--line-2); border-radius: 10px; padding: 12px 16px 4px; margin: 14px 0; }
+.offset-match legend { font-weight: 650; padding: 0 6px; }
+.offset-calc { display: flex; flex-direction: column; justify-content: center; gap: 6px; }

@@ -65,13 +65,13 @@ public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusServ
                 {
                     var count = ModbusValueConverter.RegisterCount(meter.DataType);
                     var result = await modbus.ReadHoldingRegistersAsync(controller, meter.StartingRegister, count, ct);
-                    value = ModbusValueConverter.ConvertValue(result.Registers, meter.DataType, meter.WordOrder, meter.ScalingFactor);
+                    value = ModbusValueConverter.ConvertValue(result.Registers, meter.DataType, meter.WordOrder, meter.ScalingFactor) + meter.Offset;
                     communicationDetail = $"{TransportName(controller)} request {result.RequestHex}; response {result.ResponseHex}";
                 }
                 // After a meter replacement or a channel configuration change, the first value starts a new counter.
                 if (meter.RebaseOnNextReading && value >= 0)
                 {
-                    db.MeterReadings.Add(new() { MeterId = meter.Id, RawValue = (ulong)Math.Max(0, value / meter.ScalingFactor), AccumulatedKwh = value, Timestamp = DateTimeOffset.UtcNow, Source = ReadingSource.Automatic, Quality = BillingRunService.BaselineQuality, Reason = "New starting value after meter replacement or configuration change" });
+                    db.MeterReadings.Add(new() { MeterId = meter.Id, RawValue = RawOf(meter, value), AccumulatedKwh = value, Timestamp = DateTimeOffset.UtcNow, Source = ReadingSource.Automatic, Quality = BillingRunService.BaselineQuality, Reason = "New starting value after meter replacement or configuration change" });
                     meter.RebaseOnNextReading = false; meter.LastReading = value; meter.LastReadingAt = DateTimeOffset.UtcNow; meter.CommunicationStatus = "Connected";
                     controller.LastSuccess = DateTimeOffset.UtcNow; controller.Condition = "Connected"; controller.Notes = $"Last {communicationDetail}";
                     continue;
@@ -81,7 +81,7 @@ public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusServ
                 if (value < 0 || value < meter.LastReading && meter.LastReadingAt is not null)
                 {
                     if (meter.CommunicationStatus != "Counter Review")
-                        db.MeterReadings.Add(new() { MeterId = meter.Id, RawValue = (ulong)Math.Max(0, value / meter.ScalingFactor), AccumulatedKwh = value, Timestamp = DateTimeOffset.UtcNow, Source = ReadingSource.Automatic, Quality = "Review: counter decrease or negative value", RequiresReview = true });
+                        db.MeterReadings.Add(new() { MeterId = meter.Id, RawValue = RawOf(meter, value), AccumulatedKwh = value, Timestamp = DateTimeOffset.UtcNow, Source = ReadingSource.Automatic, Quality = "Review: counter decrease or negative value", RequiresReview = true });
                     meter.CommunicationStatus = "Counter Review";
                     controller.LastSuccess = DateTimeOffset.UtcNow;
                     controller.Condition = "Counter Review";
@@ -118,14 +118,17 @@ public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusServ
     {
         var result = await mbus.ReadAsync(controller, meter.StartingRegister, meter.MBusSecondaryAddress, ct);
         var record = MBusProtocol.SelectBillingRecord(result.Telegram, meter.UtilityType == UtilityType.Water ? MBusQuantity.Volume : MBusQuantity.Energy, meter.MBusRecord);
-        var value = record.Value!.Value * meter.ScalingFactor;
+        var value = record.Value!.Value * meter.ScalingFactor + meter.Offset;
         return (value, $"M-Bus {result.AddressText} (ID {result.Telegram.SecondaryAddress}, {result.Telegram.Manufacturer}); record {record}");
     }
+
+    /// <summary>The counter value the device sent, before scaling and the meter's offset.</summary>
+    static ulong RawOf(Meter meter, decimal value) => (ulong)Math.Max(0, (value - meter.Offset) / (meter.ScalingFactor == 0 ? 1 : meter.ScalingFactor));
 
     static async Task SaveHistoryIfDue(ApplicationDbContext db, Meter meter, CancellationToken ct)
     {
         if (meter.LastReadingAt is null || meter.CommunicationStatus != "Connected") return;
         var last = await db.MeterReadings.Where(x => x.MeterId == meter.Id).OrderByDescending(x => x.Id).FirstOrDefaultAsync(ct);
-        if (last is null || DateTimeOffset.UtcNow - last.Timestamp >= TimeSpan.FromMinutes(15)) db.MeterReadings.Add(new() { MeterId = meter.Id, RawValue = (ulong)Math.Max(0, meter.LastReading / meter.ScalingFactor), AccumulatedKwh = meter.LastReading, Timestamp = DateTimeOffset.UtcNow, Source = ReadingSource.Automatic, Quality = "Good" });
+        if (last is null || DateTimeOffset.UtcNow - last.Timestamp >= TimeSpan.FromMinutes(15)) db.MeterReadings.Add(new() { MeterId = meter.Id, RawValue = RawOf(meter, meter.LastReading), AccumulatedKwh = meter.LastReading, Timestamp = DateTimeOffset.UtcNow, Source = ReadingSource.Automatic, Quality = "Good" });
     }
 }
