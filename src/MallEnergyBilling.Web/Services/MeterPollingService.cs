@@ -129,6 +129,7 @@ public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusServ
     {
         if (meter.LastReadingAt is null || meter.CommunicationStatus != "Connected") return;
         var last = await db.MeterReadings.Where(x => x.MeterId == meter.Id).OrderByDescending(x => x.Id).FirstOrDefaultAsync(ct);
-        if (last is null || DateTimeOffset.UtcNow - last.Timestamp >= TimeSpan.FromMinutes(15)) db.MeterReadings.Add(new() { MeterId = meter.Id, RawValue = RawOf(meter, meter.LastReading), AccumulatedKwh = meter.LastReading, Timestamp = DateTimeOffset.UtcNow, Source = ReadingSource.Automatic, Quality = "Good" });
+        // A newest reading dated in the future (PC clock moved back) must not stop the history.
+        if (last is null || last.Timestamp > DateTimeOffset.UtcNow || DateTimeOffset.UtcNow - last.Timestamp >= TimeSpan.FromMinutes(15)) db.MeterReadings.Add(new() { MeterId = meter.Id, RawValue = RawOf(meter, meter.LastReading), AccumulatedKwh = meter.LastReading, Timestamp = DateTimeOffset.UtcNow, Source = ReadingSource.Automatic, Quality = "Good" });
     }
 }
