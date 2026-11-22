@@ -430,3 +430,6 @@ input[type=file]::file-selector-button:hover { background: var(--teal-50); borde
 .license-remove-row .act:hover { background: var(--danger-50); border-color: var(--danger); }
 .row-actions.keep-labels .act span { display: inline; }
 .row-actions.keep-labels .act, td .row-actions.keep-labels .act { width: auto; padding: 0 11px; }
+
+/* M-Bus meter answer (4.7.0) */
+.mbus-answer tr.is-billed td { background: var(--teal-50); font-weight: 650; }

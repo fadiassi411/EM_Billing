@@ -468,6 +468,13 @@ namespace MallEnergyBilling.Web.Data.Migrations
                     b.Property<DateTimeOffset?>("LastReadingAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("MBusRecord")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("MBusSecondaryAddress")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Model")
                         .IsRequired()
                         .HasColumnType("TEXT");

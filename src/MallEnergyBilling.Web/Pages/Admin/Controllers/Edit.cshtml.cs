@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using ControllerModel = MallEnergyBilling.Web.Models.Controller;
 
 namespace MallEnergyBilling.Web.Pages.Admin.Controllers;
-public sealed class EditModel(ApplicationDbContext db, IModbusService modbus, IBacnetIpService bacnet, ILogger<EditModel> log) : PageModel
+public sealed class EditModel(ApplicationDbContext db, IModbusService modbus, IBacnetIpService bacnet, IMBusService mbus, ILogger<EditModel> log) : PageModel
 {
     [BindProperty] public InputModel Input { get; set; } = new();
     public List<Meter> Meters { get; private set; } = [];
@@ -86,7 +86,7 @@ public sealed class EditModel(ApplicationDbContext db, IModbusService modbus, IB
         if(Input.Id>0)Meters=await db.Meters.Where(m=>m.ControllerId==Input.Id).OrderBy(m=>m.StartingRegister).ToListAsync();
         ValidateTransport();
         if(!ModelState.IsValid){TestResult="FAILED - correct the communication settings below.";return Page();}
-        if(Meters.Count==0)TestResult="FAILED - add at least one meter register channel before testing.";
+        if(Meters.Count==0)TestResult=Input.CommunicationType=="MBusTcp"?"FAILED - add at least one meter (with its M-Bus address) before testing.":"FAILED - add at least one meter register channel before testing.";
         else
         {
             var meter=Meters[0];var config=new ControllerModel{CommunicationType=Input.CommunicationType,ComPort=(Input.ComPort??"COM1").ToUpperInvariant(),BaudRate=Input.BaudRate,Parity=Input.Parity,DataBits=Input.DataBits,StopBits=Input.StopBits,IpAddress=(Input.IpAddress??"").Trim(),TcpPort=Input.TcpPort,BacnetLocalIp=(Input.BacnetLocalIp??"").Trim(),BacnetUdpPort=Input.BacnetUdpPort,BacnetDeviceInstance=Input.BacnetDeviceInstance,SlaveAddress=Input.SlaveAddress,TimeoutMilliseconds=Input.TimeoutMilliseconds,RetryCount=Input.RetryCount};
@@ -99,6 +99,10 @@ public sealed class EditModel(ApplicationDbContext db, IModbusService modbus, IB
                     var result = await bacnet.ReadPresentValueAsync(config, meter, HttpContext.RequestAborted);
                     value = result.Value;
                     detail = $"BACnet/IP device {Input.BacnetDeviceInstance}, object {result.ObjectIdentifier}, Present_Value {result.RawValue}";
+                }
+                else if (Input.CommunicationType == "MBusTcp")
+                {
+                    (value, detail) = await MeterPollingService.ReadMBusAsync(mbus, config, meter, HttpContext.RequestAborted);
                 }
                 else
                 {
@@ -116,9 +120,9 @@ public sealed class EditModel(ApplicationDbContext db, IModbusService modbus, IB
 
     private void ValidateTransport()
     {
-        if(Input.CommunicationType is not ("ModbusRtu" or "ModbusTcp" or "BacnetIp")){ModelState.AddModelError("Input.CommunicationType","Select Modbus RTU, Modbus TCP/IP, or BACnet/IP.");return;}
+        if(Input.CommunicationType is not ("ModbusRtu" or "ModbusTcp" or "BacnetIp" or "MBusTcp")){ModelState.AddModelError("Input.CommunicationType","Select Modbus RTU, Modbus TCP/IP, BACnet/IP, or M-Bus gateway.");return;}
         if(Input.CommunicationType=="ModbusRtu"&&!System.Text.RegularExpressions.Regex.IsMatch(Input.ComPort??"","^COM[0-9]{1,3}$",System.Text.RegularExpressions.RegexOptions.IgnoreCase))ModelState.AddModelError("Input.ComPort","Use a Windows port such as COM3.");
-        if(Input.CommunicationType=="ModbusTcp"&&(string.IsNullOrWhiteSpace(Input.IpAddress)||Uri.CheckHostName((Input.IpAddress??"").Trim())==UriHostNameType.Unknown))ModelState.AddModelError("Input.IpAddress","Enter a valid controller IP address or host name.");
+        if(Input.CommunicationType is "ModbusTcp" or "MBusTcp"&&(string.IsNullOrWhiteSpace(Input.IpAddress)||Uri.CheckHostName((Input.IpAddress??"").Trim())==UriHostNameType.Unknown))ModelState.AddModelError("Input.IpAddress",Input.CommunicationType=="MBusTcp"?"Enter the IP address or host name of the M-Bus gateway.":"Enter a valid controller IP address or host name.");
         if(Input.CommunicationType=="BacnetIp")
         {
             if(string.IsNullOrWhiteSpace(Input.IpAddress)||Uri.CheckHostName((Input.IpAddress??"").Trim())==UriHostNameType.Unknown)ModelState.AddModelError("Input.IpAddress","Enter a valid BACnet device IP address or host name.");

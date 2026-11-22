@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MallEnergyBilling.Web.Services;
 
-public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusService modbus, IBacnetIpService bacnet, DatabaseMaintenanceService maintenance, ILogger<MeterPollingService> log) : BackgroundService
+public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusService modbus, IBacnetIpService bacnet, IMBusService mbus, DatabaseMaintenanceService maintenance, ILogger<MeterPollingService> log) : BackgroundService
 {
     readonly Dictionary<int, DateTimeOffset> nextPoll = [];
     protected override async Task ExecuteAsync(CancellationToken ct)
@@ -20,7 +20,7 @@ public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusServ
                 try
                 {
                     using var scope = scopes.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(); var now = DateTimeOffset.UtcNow;
-                    due = await db.Controllers.Where(x => x.Enabled && (x.CommunicationType == "ModbusRtu" || x.CommunicationType == "ModbusTcp") && db.Meters.Any(m => m.ControllerId == x.Id && m.Active)).Select(x => x.Id).ToListAsync(ct);
+                    due = await db.Controllers.Where(x => x.Enabled && (x.CommunicationType == "ModbusRtu" || x.CommunicationType == "ModbusTcp" || x.CommunicationType == "MBusTcp") && db.Meters.Any(m => m.ControllerId == x.Id && m.Active)).Select(x => x.Id).ToListAsync(ct);
                     due = due.Where(id => !nextPoll.TryGetValue(id, out var at) || at <= now).ToList();
                 }
                 finally { maintenance.Gate.Release(); }
@@ -57,6 +57,10 @@ public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusServ
                     value = result.Value;
                     communicationDetail = $"BACnet/IP {result.Address}; object {result.ObjectIdentifier}; Present_Value {result.RawValue}";
                 }
+                else if (controller.CommunicationType == "MBusTcp")
+                {
+                    (value, communicationDetail) = await ReadMBusAsync(mbus, controller, meter, ct);
+                }
                 else
                 {
                     var count = ModbusValueConverter.RegisterCount(meter.DataType);
@@ -89,7 +93,13 @@ public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusServ
                 try { if (maintenance.Generation == generation) await SaveHistoryIfDue(db, meter, ct); }
                 finally { maintenance.Gate.Release(); }
             }
-            catch (Exception ex) { meter.CommunicationStatus = "Failed"; controller.Condition = "Failed"; controller.Notes = ex.Message; transportFailed = true; log.LogWarning(ex, "{Transport} read failed for controller {Controller} on {Endpoint}; remaining channels skipped until next poll", TransportName(controller), controller.Name, controller.CommunicationType=="BacnetIp"?$"{controller.IpAddress}:{controller.BacnetUdpPort}":controller.CommunicationType=="ModbusTcp"?$"{controller.IpAddress}:{controller.TcpPort}":controller.ComPort); }
+            catch (Exception ex) when (ex is MBusNoAnswerException or MBusProtocolException)
+            {
+                // The gateway works, only this meter is silent or sent an unusable answer: keep reading the others.
+                meter.CommunicationStatus = "Failed"; controller.Notes = $"{meter.Name}: {ex.Message}";
+                log.LogWarning("M-Bus meter {Meter} on {Controller}: {Message}", meter.Name, controller.Name, ex.Message);
+            }
+            catch (Exception ex) { meter.CommunicationStatus = "Failed"; controller.Condition = "Failed"; controller.Notes = ex.Message; transportFailed = true; log.LogWarning(ex, "{Transport} read failed for controller {Controller} on {Endpoint}; remaining channels skipped until next poll", TransportName(controller), controller.Name, controller.CommunicationType=="BacnetIp"?$"{controller.IpAddress}:{controller.BacnetUdpPort}":controller.CommunicationType is "ModbusTcp" or "MBusTcp"?$"{controller.IpAddress}:{controller.TcpPort}":controller.ComPort); }
         }
         await maintenance.Gate.WaitAsync(ct);
         try
@@ -101,7 +111,16 @@ public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusServ
         finally { maintenance.Gate.Release(); }
     }
 
-    static string TransportName(Controller controller) => controller.CommunicationType switch { "BacnetIp" => "BACnet/IP", "ModbusTcp" => "Modbus TCP/IP", _ => "Modbus RTU" };
+    static string TransportName(Controller controller) => controller.CommunicationType switch { "BacnetIp" => "BACnet/IP", "ModbusTcp" => "Modbus TCP/IP", "MBusTcp" => "M-Bus TCP", _ => "Modbus RTU" };
+
+    /// <summary>Reads one M-Bus meter and returns its billing total (kWh or m³) multiplied by the meter's scaling factor.</summary>
+    public static async Task<(decimal Value, string Detail)> ReadMBusAsync(IMBusService mbus, Controller controller, Meter meter, CancellationToken ct)
+    {
+        var result = await mbus.ReadAsync(controller, meter.StartingRegister, meter.MBusSecondaryAddress, ct);
+        var record = MBusProtocol.SelectBillingRecord(result.Telegram, meter.UtilityType == UtilityType.Water ? MBusQuantity.Volume : MBusQuantity.Energy, meter.MBusRecord);
+        var value = record.Value!.Value * meter.ScalingFactor;
+        return (value, $"M-Bus {result.AddressText} (ID {result.Telegram.SecondaryAddress}, {result.Telegram.Manufacturer}); record {record}");
+    }
 
     static async Task SaveHistoryIfDue(ApplicationDbContext db, Meter meter, CancellationToken ct)
     {

@@ -28,7 +28,7 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
     [BindProperty, StringLength(100)] public string FirstMeterSerial { get; set; } = "";
     [BindProperty, StringLength(300)] public string Reason { get; set; } = "";
 
-    public async Task<IActionResult> OnGetAsync(int id) { if (!await Load(id)) return NotFound(); ShopId = Shops.FirstOrDefault()?.Id ?? 0; ChannelCount = Controller.CommunicationType == "BacnetIp" ? 1 : Math.Max(1, 45 - Meters.Count); if(Controller.CommunicationType == "BacnetIp") ScalingFactor=1; return Page(); }
+    public async Task<IActionResult> OnGetAsync(int id) { if (!await Load(id)) return NotFound(); ShopId = Shops.FirstOrDefault()?.Id ?? 0; ChannelCount = Controller.CommunicationType == "BacnetIp" ? 1 : Math.Max(1, 45 - Meters.Count); if(Controller.CommunicationType == "BacnetIp") ScalingFactor=1; if(Controller.CommunicationType == "MBusTcp") { FirstRegister = Math.Min(250, Meters.Where(m => m.MBusSecondaryAddress == "").Select(m => m.StartingRegister + 1).DefaultIfEmpty(1).Max()); RegisterStride = 1; ScalingFactor = 1; } return Page(); }
     public async Task<IActionResult> OnPostGenerateAsync(int id)
     {
         if (!await Load(id)) return NotFound();
@@ -37,16 +37,18 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
         var isBacnet = Controller.CommunicationType == "BacnetIp";
         if (string.IsNullOrWhiteSpace(BacnetObjectType)) BacnetObjectType = "AnalogInput"; // not shown for Modbus controllers
         var lastRegister = FirstRegister + (ChannelCount - 1) * RegisterStride;
-        if (!isBacnet && lastRegister > 65535) ModelState.AddModelError(nameof(FirstRegister), "The generated register range exceeds 65535.");
+        var isMBus = Controller.CommunicationType == "MBusTcp";
+        if (isMBus && (FirstRegister < 1 || lastRegister > 250)) ModelState.AddModelError(nameof(FirstRegister), "M-Bus primary addresses run from 1 to 250. Use fewer meters or a lower first address.");
+        else if (!isBacnet && lastRegister > 65535) ModelState.AddModelError(nameof(FirstRegister), "The generated register range exceeds 65535.");
         var lastObject = FirstBacnetObjectInstance + (ChannelCount - 1) * BacnetObjectStride;
         if (isBacnet && lastObject > 4194303) ModelState.AddModelError(nameof(FirstBacnetObjectInstance), "The generated BACnet object range exceeds 4194303.");
         if (!ModelState.IsValid) return Page();
-        var existingRegisters = Meters.Select(x => x.StartingRegister).ToHashSet();
+        var existingRegisters = Meters.Where(x => !isMBus || x.MBusSecondaryAddress == "").Select(x => x.StartingRegister).ToHashSet();
         for (var i = 0; i < ChannelCount; i++)
         {
             var register = FirstRegister + i * RegisterStride;
             var objectInstance = FirstBacnetObjectInstance + i * BacnetObjectStride;
-            if (!isBacnet && existingRegisters.Contains(register)) { ModelState.AddModelError("", $"Register {register} is already assigned on this controller."); return Page(); }
+            if (!isBacnet && existingRegisters.Contains(register)) { ModelState.AddModelError("", isMBus ? $"M-Bus address {register} is already used on this gateway." : $"Register {register} is already assigned on this controller."); return Page(); }
         }
         var startChannel = Meters.Count + 1;
         for (var i = 0; i < ChannelCount; i++)
