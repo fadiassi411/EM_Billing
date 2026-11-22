@@ -55,6 +55,10 @@
             </div>
             <label class="board-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="search" placeholder="Meter name, shop, tenant or serial" aria-label="Search meters" autocomplete="off" /></label>
         </div>
+        <div class="card-legend" aria-label="Card colours">
+            <span><i class="sw sw-grid"></i>Grid</span><span><i class="sw sw-generator"></i>Generator</span>@if(Model.WaterEnabled){<span><i class="sw sw-water"></i>Water</span>}
+            <span><i class="sw sw-off"></i>Not in service (inactive or not commissioned)</span><span><i class="sw sw-bad"></i>Alarm</span><span><i class="sw sw-warn"></i>Waiting</span>
+        </div>
         <div class="board-chips" role="group" aria-label="Filter by status"></div>
         <div class="meter-cards" id="dashboard-meter-cards" data-live data-board-items>
         @if(Model.Meters.Count == 0){<div class="board-empty">No meters yet. Add a controller and its meters in Settings → Controller setup.</div>}

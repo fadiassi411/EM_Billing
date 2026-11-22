@@ -52,6 +52,7 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AuthorizeFolder("/Admin/Email", Permissions.PolicyName(Permissions.ManageEmailSettings));
     o.Conventions.AuthorizeFolder("/Admin/Features", Permissions.PolicyName(Permissions.ManageFeatures));
     o.Conventions.AuthorizeFolder("/Admin/License", Permissions.PolicyName(Permissions.ManageLicense));
+    o.Conventions.AuthorizeFolder("/Admin/Backup", Permissions.PolicyName(Permissions.BackupRestore));
     // Users and user levels stay with Administrators, so nobody can give themselves more rights.
     o.Conventions.AuthorizeFolder("/Admin/Users", "AdministratorOnly");
 }).AddMvcOptions(o =>

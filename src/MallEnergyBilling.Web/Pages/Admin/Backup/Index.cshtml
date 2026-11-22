@@ -1,0 +1,43 @@
+@page
+@model MallEnergyBilling.Web.Pages.Admin.Backup.IndexModel
+@{ ViewData["Title"] = "Backup & restore"; }
+
+<section class="hero compact">
+    <div>
+        <span class="eyebrow">Settings</span>
+        <h1>Backup &amp; restore</h1>
+        <p>An automatic backup is made every day and the last 30 are kept. Restoring first saves a safety copy of the current data, so a wrong restore can be undone.</p>
+    </div>
+    <form method="post" asp-page-handler="Backup"><button type="submit">Create backup now</button></form>
+</section>
+
+@if(TempData["BackupSuccess"] is string backupSuccess){<div class="alert-success">@backupSuccess</div>}
+@if(TempData["BackupError"] is string backupError){<div class="alert-error">@backupError</div>}
+
+<section class="panel">
+    <div class="panel-title"><h2>Backups</h2><span>Folder: <code>@Model.BackupPath</code></span></div>
+    <div class="table-responsive">
+        <table data-grid="backups" data-grid-size="10" data-grid-placeholder="Search backup name or date…" data-grid-empty="No backup matches this search.">
+            <thead><tr><th>Backup file</th><th>Type</th><th>Created</th><th>Size</th><th data-sort="off"></th></tr></thead>
+            <tbody>
+            @if(Model.BackupFiles.Count == 0){<tr><td colspan="5">No backups yet. Press Create backup now.</td></tr>}
+            @foreach(var file in Model.BackupFiles){
+                <tr>
+                    <td><b>@file.Name</b></td>
+                    <td><span class="status">@file.Kind</span></td>
+                    <td data-sort="@file.Modified.ToString("yyyyMMddHHmmss")">@file.Modified.ToString("dd MMM yyyy HH:mm")</td>
+                    <td data-sort="@file.Size">@((file.Size / 1024.0 / 1024.0).ToString("N2")) MB</td>
+                    <td>
+                        <div class="row-actions keep-labels">
+                            <form method="post" asp-page-handler="Restore" onsubmit="return confirm('Restore @file.Name? The current data is saved as a safety copy first, then replaced by this backup.');">
+                                <input type="hidden" name="fileName" value="@file.Name" />
+                                <button class="act act-danger" type="submit" title="Replace the current data with this backup" aria-label="Replace the current data with this backup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span>Restore</span></button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>
