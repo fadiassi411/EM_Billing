@@ -20,6 +20,33 @@ public class IndexModel(ApplicationDbContext db, PermissionService permissions) 
 
     public bool CanViewInvoices { get; private set; }
     public bool CanManageShops { get; private set; }
+    public bool WaterEnabled { get; private set; }
+
+    static readonly string[] AlarmStatuses = ["Failed", "Frozen", "Stale", "Timeout", "BACnet Error", "Configuration Error", "Counter Review"];
+
+    /// <summary>Card colour state: ok (online), bad (alarm), warn (waiting/partial) or off (not in service).</summary>
+    public static string Tone(Meter meter)
+    {
+        var status = meter.DisplayStatus;
+        if (!meter.Active || status is "Not commissioned" or "Disabled" or "Archived") return "off";
+        if (AlarmStatuses.Contains(status)) return "bad";
+        if (status is "Connected" or "Online") return "ok";
+        return "warn";
+    }
+
+    /// <summary>Meter type shown on the card: Grid, Generator or Water.</summary>
+    public static string Kind(Meter meter) => meter.UtilityType == UtilityType.Water ? "Water" : meter.PowerSource.ToString();
+
+    public static string Ago(DateTimeOffset? at, DateTimeOffset now)
+    {
+        if (at is null) return "No reading yet";
+        var span = now - at.Value;
+        if (span < TimeSpan.FromMinutes(1)) return "Just now";
+        if (span < TimeSpan.FromHours(1)) return $"{(int)span.TotalMinutes} min ago";
+        if (span < TimeSpan.FromDays(1)) return $"{(int)span.TotalHours} h ago";
+        if (span < TimeSpan.FromDays(60)) return $"{(int)span.TotalDays} days ago";
+        return at.Value.ToLocalTime().ToString("dd MMM yyyy");
+    }
 
     public async Task<IActionResult> OnGet()
     {
@@ -32,7 +59,10 @@ public class IndexModel(ApplicationDbContext db, PermissionService permissions) 
         }
         CanViewInvoices = await permissions.HasAsync(User, Permissions.ViewInvoices);
         CanManageShops = await permissions.HasAsync(User, Permissions.ManageShops);
-        Meters = await db.Meters.Include(x => x.Shop).Include(x => x.Controller).Where(x=>x.UtilityType==UtilityType.Electricity && x.CommunicationStatus!="Archived").ToListAsync();
+        WaterEnabled = await db.SystemFeatureConfigurations.AsNoTracking().AnyAsync(x => x.Id == 1 && x.WaterBillingEnabled);
+        var includeWater = WaterEnabled;
+        Meters = await db.Meters.Include(x => x.Shop).Include(x => x.Controller)
+            .Where(x => (x.UtilityType == UtilityType.Electricity || includeWater) && x.CommunicationStatus != "Archived").ToListAsync();
         var all = (await db.Tariffs.Include(x => x.Meter).ToListAsync()).Where(x => x.MeterId != null && x.Meter?.UtilityType==UtilityType.Electricity && x.EffectiveFrom <= DateTimeOffset.UtcNow);
         CurrentTariffs = all.GroupBy(x => x.MeterId).Select(g => g.OrderByDescending(x => x.EffectiveFrom).First()).ToList();
         if (CurrentTariffs.Count > 0)

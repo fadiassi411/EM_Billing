@@ -322,3 +322,68 @@ td .button, td button { padding: 6px 12px; font-size: 12.5px; }
 .level-create .form-grid { grid-template-columns: 1fr 1fr; }
 .level-delete form { margin-bottom: 8px; }
 @media (max-width: 960px) { .level-tools, .level-create .form-grid { grid-template-columns: 1fr; } }
+
+/* ---------- dashboard meter cards (4.6) ---------- */
+.meter-board-panel { padding-bottom: 16px; }
+.board-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.board-head h2 { margin: 0 0 2px; }
+.view-switch { display: inline-flex; padding: 4px; gap: 4px; background: #e9eef1; border-radius: 11px; }
+.view-switch button { gap: 6px; padding: 6px 12px; background: transparent; color: var(--ink-2); border: 0; border-radius: 8px; font-weight: 650; }
+.view-switch button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.view-switch button:hover { background: #ffffffaa; color: var(--ink); }
+.view-switch button[aria-pressed="true"] { background: #fff; color: var(--ink); box-shadow: var(--shadow); }
+
+.board-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.kind-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { padding: 7px 16px; border-radius: 999px; background: #fff; color: #1f4aa8; border: 1.5px solid #c9d6ee; font-weight: 700; }
+.pill:hover { background: #eef3fd; color: #1f4aa8; }
+.pill.active { background: linear-gradient(160deg, #3a7be0, #1f4aa8); color: #fff; border-color: transparent; box-shadow: 0 4px 12px #1f4aa833; }
+.board-search { position: relative; flex: 0 1 340px; min-width: 220px; }
+.board-search svg { position: absolute; left: 12px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; pointer-events: none; }
+.board-search input { width: 100%; padding-left: 36px !important; border-radius: 999px !important; }
+.board-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.board-chips:empty { display: none; }
+
+.meter-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+.meter-card {
+  --c1: #3a7be0; --c2: #1f4aa8;
+  position: relative; display: flex; flex-direction: column; min-height: 132px; border-radius: 12px; overflow: hidden;
+  background: linear-gradient(160deg, var(--c1) 0%, var(--c2) 100%); color: #fff; text-decoration: none;
+  box-shadow: 0 6px 16px rgba(20, 50, 110, .22); transition: transform .12s ease, box-shadow .12s ease;
+}
+.meter-card:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(20, 50, 110, .32); color: #fff; }
+.meter-card:focus-visible { outline: 3px solid #ffd54a; outline-offset: 2px; }
+.meter-card.kind-generator { --c1: #8a6cf2; --c2: #4f30b8; }
+.meter-card.kind-water { --c1: #19b9cc; --c2: #0a7c98; }
+.meter-card.tone-off { --c1: #9aa8b4; --c2: #66757f; box-shadow: 0 4px 12px rgba(40, 55, 70, .16); }
+.meter-card.tone-off .mc-reading { opacity: .75; }
+.mc-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 12px 14px 0; }
+.mc-title { min-width: 0; }
+.mc-title b { display: block; font-size: 14.5px; font-weight: 750; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mc-title small { display: block; margin-top: 2px; font-size: 11.5px; color: #ffffffc7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mc-icon { display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; border-radius: 9px; background: #ffffff26; }
+.mc-icon svg { width: 17px; height: 17px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.meter-card.kind-grid .mc-icon svg { fill: #fff; stroke: none; }
+.mc-reading { flex: 1; display: flex; align-items: flex-end; gap: 5px; padding: 10px 14px 10px; font-size: 22px; font-weight: 750; letter-spacing: -.01em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.mc-reading small { margin-bottom: 2px; font-size: 12px; font-weight: 650; color: #ffffffcc; }
+.mc-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 14px; background: rgba(0, 0, 0, .18); font-size: 11.5px; font-weight: 600; color: #ffffffe0; }
+.mc-status { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mc-status i { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: #5dfc9b; box-shadow: 0 0 0 3px #5dfc9b33; }
+.meter-card.tone-warn .mc-status i { background: #ffc94a; box-shadow: 0 0 0 3px #ffc94a40; }
+.meter-card.tone-off .mc-status i { background: #dfe6eb; box-shadow: none; }
+/* alarm: the card keeps its type colour, gets a red frame, red footer and a pulsing dot */
+.meter-card.tone-bad { box-shadow: 0 0 0 3px #ef4444, 0 8px 20px rgba(200, 40, 40, .28); }
+.meter-card.tone-bad .mc-foot { background: #d83a3a; color: #fff; }
+.meter-card.tone-bad .mc-status i { background: #fff; box-shadow: 0 0 0 0 #ffffffaa; animation: cardPulse 1.6s infinite; }
+.meter-card.tone-warn { box-shadow: 0 0 0 3px #f4b23e, 0 8px 20px rgba(180, 120, 20, .22); }
+@keyframes cardPulse { 0% { box-shadow: 0 0 0 0 #ffffffaa; } 70% { box-shadow: 0 0 0 7px #ffffff00; } 100% { box-shadow: 0 0 0 0 #ffffff00; } }
+.board-empty { grid-column: 1 / -1; padding: 36px 14px; text-align: center; color: var(--muted); border: 1px dashed var(--line-2); border-radius: 12px; }
+.board-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; color: var(--muted); font-size: 12.5px; }
+.source-badge.source-water { background: #e2f6fa; color: #0a7c98; }
+@media (max-width: 560px) {
+  .meter-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .meter-card { min-height: 118px; }
+  .mc-reading { font-size: 18px; }
+  .board-search { flex-basis: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .meter-card { transition: none; } .meter-card.tone-bad .mc-status i { animation: none; } }

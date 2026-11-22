@@ -224,6 +224,93 @@
     render();
   }
 
+  // ---------- meter card board ----------
+  // <section data-board="name"> with [data-board-items] holding [data-card] tiles (data-kind,
+  // data-status, data-search). Type pills, status chips, search and pages, plus a Cards/List switch.
+  function setupBoard(board) {
+    const key = "board:" + location.pathname + ":" + board.dataset.board;
+    const state = Object.assign({ kind: "", status: "", q: "", page: 1 }, store.get(key) || {});
+    const pageSize = Number(board.dataset.boardSize || 36);
+    const items = board.querySelector("[data-board-items]");
+    const search = board.querySelector(".board-search input");
+    const chips = board.querySelector(".board-chips");
+    const pills = [...board.querySelectorAll(".kind-pills [data-kind]")];
+    const count = board.querySelector(".board-count");
+    const pager = board.querySelector(".board-pager");
+    if (!items) return;
+    if (search) search.value = state.q;
+    if (!pills.some(p => p.dataset.kind === state.kind)) state.kind = "";
+
+    // Cards / List switch, remembered on this computer.
+    const viewKey = "view:" + location.pathname + ":" + board.dataset.board;
+    const setView = view => {
+      board.querySelectorAll("[data-view]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.view === view)));
+      board.querySelectorAll("[data-view-panel]").forEach(p => p.hidden = p.dataset.viewPanel !== view);
+      try { localStorage.setItem(viewKey, view); } catch { /* storage unavailable */ }
+    };
+    board.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => setView(b.dataset.view)));
+    let savedView = "cards";
+    try { savedView = localStorage.getItem(viewKey) || "cards"; } catch { /* storage unavailable */ }
+    setView(savedView);
+
+    pills.forEach(p => p.addEventListener("click", () => { state.kind = p.dataset.kind; state.status = ""; state.page = 1; render(); }));
+    let timer;
+    search?.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => { state.q = search.value; state.page = 1; render(); }, 120); });
+
+    function render() {
+      const cards = [...items.querySelectorAll("[data-card]")];
+      pills.forEach(p => p.classList.toggle("active", p.dataset.kind === state.kind));
+      const ofKind = cards.filter(c => !state.kind || c.dataset.kind === state.kind);
+
+      const totals = new Map();
+      ofKind.forEach(c => totals.set(c.dataset.status, (totals.get(c.dataset.status) || 0) + 1));
+      if (state.status && !totals.has(state.status)) state.status = "";
+      chips.innerHTML = "";
+      if (totals.size > 1) {
+        const chip = (label, value, n) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "grid-chip" + (state.status === value ? " active" : "") + (value ? " tone-" + toneOf(value) : "");
+          b.innerHTML = `${label}<b>${n}</b>`;
+          b.setAttribute("aria-pressed", String(state.status === value));
+          b.addEventListener("click", () => { state.status = state.status === value ? "" : value; state.page = 1; render(); });
+          chips.appendChild(b);
+        };
+        chip("All", "", ofKind.length);
+        [...totals.entries()].sort((a, b) => b[1] - a[1]).forEach(([s, n]) => chip(s, s, n));
+      }
+
+      const terms = normalise(state.q).split(" ").filter(Boolean);
+      const matches = ofKind.filter(c => (!state.status || c.dataset.status === state.status)
+        && terms.every(t => normalise(c.dataset.search).includes(t)));
+      const pages = Math.max(1, Math.ceil(matches.length / pageSize));
+      state.page = Math.min(Math.max(1, state.page), pages);
+      const start = (state.page - 1) * pageSize;
+      const visible = new Set(matches.slice(start, start + pageSize));
+      cards.forEach(c => c.hidden = !visible.has(c));
+
+      let empty = items.querySelector(".board-empty.filtered");
+      if (cards.length && !matches.length) {
+        if (!empty) { empty = document.createElement("div"); empty.className = "board-empty filtered"; empty.textContent = "No meter matches this filter."; items.appendChild(empty); }
+      } else empty?.remove();
+
+      if (count) count.textContent = cards.length === 0 ? "" : `Showing ${matches.length ? start + 1 : 0}–${Math.min(start + pageSize, matches.length)} of ${matches.length} meter(s)` + (matches.length !== cards.length ? ` (of ${cards.length})` : "");
+      if (pager) {
+        pager.innerHTML = "";
+        if (pages > 1) for (let p = 1; p <= pages; p++) {
+          const b = document.createElement("button");
+          b.type = "button"; b.textContent = String(p);
+          if (p === state.page) b.className = "active";
+          b.addEventListener("click", () => { state.page = p; render(); board.scrollIntoView({ block: "start", behavior: "smooth" }); });
+          pager.appendChild(b);
+        }
+      }
+      store.set(key, state);
+    }
+    grids.push({ table: board, render });
+    render();
+  }
+
   // ---------- live refresh ----------
   function setupLiveRefresh() {
     const host = document.querySelector("[data-live-refresh]");
@@ -292,6 +379,7 @@
     setupSidebar();
     colourStatuses();
     document.querySelectorAll("table[data-grid]").forEach(setupGrid);
+    document.querySelectorAll("[data-board]").forEach(setupBoard);
     setupLiveRefresh();
     setupClock();
     document.addEventListener("keydown", e => {

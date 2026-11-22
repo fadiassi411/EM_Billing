@@ -7,6 +7,11 @@
     var connected = Model.Meters.Count(x => x.DisplayStatus is "Connected" or "Online");
     var active = Model.Meters.Count(x => x.Active);
     var controllers = Model.Meters.Select(x => x.ControllerId).Distinct().Count();
+    const string GridIcon = "<svg viewBox='0 0 24 24'><path d='M13 2 4 14h7l-1 8 9-12h-7l1-8Z'/></svg>";
+    const string GeneratorIcon = "<svg viewBox='0 0 24 24'><rect x='3' y='7' width='18' height='12' rx='2'/><path d='M7 7V4h10v3M8 13h3l-1 3 4-5h-3l1-3'/></svg>";
+    const string WaterIcon = "<svg viewBox='0 0 24 24'><path d='M12 3s6 6.6 6 11a6 6 0 0 1-12 0c0-4.4 6-11 6-11Z'/></svg>";
+    const string CardsIcon = "<svg viewBox='0 0 24 24'><rect x='3' y='3' width='7' height='7' rx='1.5'/><rect x='14' y='3' width='7' height='7' rx='1.5'/><rect x='3' y='14' width='7' height='7' rx='1.5'/><rect x='14' y='14' width='7' height='7' rx='1.5'/></svg>";
+    const string ListIcon = "<svg viewBox='0 0 24 24'><path d='M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01'/></svg>";
     var invoices = Model.Invoices.OrderByDescending(x => x.InvoiceDate).ThenByDescending(x => x.Id).ToList();
 }
 <section class="hero">
@@ -31,8 +36,52 @@
     <div class="metric"><span>Collection rate</span><b>@Model.CollectionRateSummary</b><small>@Model.Invoices.Count invoice(s) issued</small></div>
 </div>
 
-<section class="panel">
-    <div class="panel-title"><h2>Live meter status</h2><span>Updated automatically by the metering service</span></div>
+<section class="panel meter-board-panel" data-board="dashboard-meters">
+    <div class="board-head">
+        <div><h2>Live meters</h2><span class="note">Tap a meter to open its consumption and details.</span></div>
+        <div class="view-switch" role="group" aria-label="Meter view">
+            <button type="button" data-view="cards" aria-pressed="true">@Html.Raw(CardsIcon)Cards</button>
+            <button type="button" data-view="list" aria-pressed="false">@Html.Raw(ListIcon)List</button>
+        </div>
+    </div>
+
+    <div data-view-panel="cards">
+        <div class="board-toolbar">
+            <div class="kind-pills" role="group" aria-label="Meter type">
+                <button type="button" class="pill" data-kind="">All</button>
+                <button type="button" class="pill" data-kind="Grid">⚡ Grid</button>
+                <button type="button" class="pill" data-kind="Generator">⚙ Generator</button>
+                @if(Model.WaterEnabled){<button type="button" class="pill" data-kind="Water">💧 Water</button>}
+            </div>
+            <label class="board-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="search" placeholder="Meter name, shop, tenant or serial" aria-label="Search meters" autocomplete="off" /></label>
+        </div>
+        <div class="board-chips" role="group" aria-label="Filter by status"></div>
+        <div class="meter-cards" id="dashboard-meter-cards" data-live data-board-items>
+        @if(Model.Meters.Count == 0){<div class="board-empty">No meters yet. Add a controller and its meters in Settings → Controller setup.</div>}
+        @foreach(var m in Model.Meters.OrderBy(x => MallEnergyBilling.Web.Pages.IndexModel.Tone(x) switch { "bad" => 0, "warn" => 1, "ok" => 2, _ => 3 }).ThenBy(x => x.Name)){
+            var tone = MallEnergyBilling.Web.Pages.IndexModel.Tone(m);
+            var kind = MallEnergyBilling.Web.Pages.IndexModel.Kind(m);
+            var status = tone == "off" && !m.Active ? "Not in service" : m.DisplayStatus;
+            <a class="meter-card kind-@kind.ToLowerInvariant() tone-@tone" asp-page="/Meters/Details" asp-route-id="@m.Id"
+               data-card data-kind="@kind" data-status="@status"
+               data-search="@m.Name @m.SerialNumber @m.Shop?.ShopNumber @m.Shop?.Name @m.Shop?.TenantName @m.Shop?.Floor @m.Shop?.Zone @m.Controller?.Name @m.Controller?.MdbPanel @kind"
+               title="@m.Name · @status">
+                <div class="mc-top">
+                    <div class="mc-title"><b>@m.Name</b><small>@(string.IsNullOrWhiteSpace(m.Shop?.Name) ? "No shop" : m.Shop.Name)@(string.IsNullOrWhiteSpace(m.Shop?.TenantName) ? "" : " · " + m.Shop.TenantName)</small></div>
+                    <span class="mc-icon" aria-hidden="true">@Html.Raw(kind switch { "Water" => WaterIcon, "Generator" => GeneratorIcon, _ => GridIcon })</span>
+                </div>
+                <div class="mc-reading">@m.LastReading.ToString("N3")<small>@m.Unit</small></div>
+                <div class="mc-foot">
+                    <span class="mc-status"><i></i>@status</span>
+                    <span>@MallEnergyBilling.Web.Pages.IndexModel.Ago(m.LastReadingAt, DateTimeOffset.UtcNow)</span>
+                </div>
+            </a>
+        }
+        </div>
+        <div class="board-footer"><span class="board-count" aria-live="polite"></span><div class="grid-pager board-pager"></div></div>
+    </div>
+
+    <div data-view-panel="list" hidden>
     <div class="table-responsive">
         <table data-grid="dashboard-meters" data-grid-placeholder="Search meter, shop, serial, panel…" data-grid-empty="No meter matches this search.">
             <thead><tr><th>Meter / shop</th><th>Source</th><th>MDB panel</th><th>Reading</th><th>Status</th><th>Last reading</th><th data-sort="off"></th></tr></thead>
@@ -41,9 +90,9 @@
             @foreach(var m in Model.Meters.OrderBy(x => x.Name)){
                 <tr>
                     <td><b>@m.Name</b><small>@m.Shop?.Name · @m.SerialNumber</small></td>
-                    <td><span class="source-badge source-@m.PowerSource.ToString().ToLowerInvariant()">@m.PowerSource</span></td>
+                    <td><span class="source-badge source-@MallEnergyBilling.Web.Pages.IndexModel.Kind(m).ToLowerInvariant()">@MallEnergyBilling.Web.Pages.IndexModel.Kind(m)</span></td>
                     <td>@m.Controller?.MdbPanel</td>
-                    <td data-sort="@m.LastReading.ToString(System.Globalization.CultureInfo.InvariantCulture)"><span class="meter-reading-value">@m.LastReading.ToString("N3") kWh</span></td>
+                    <td data-sort="@m.LastReading.ToString(System.Globalization.CultureInfo.InvariantCulture)"><span class="meter-reading-value">@m.LastReading.ToString("N3") @m.Unit</span></td>
                     <td><span class="status">@m.DisplayStatus</span></td>
                     <td data-sort="@(m.LastReadingAt?.ToUnixTimeSeconds() ?? 0)">@(m.LastReadingAt?.ToLocalTime().ToString("dd MMM yyyy HH:mm") ?? "No reading yet")</td>
                     <td><a class="button" asp-page="/Meters/Details" asp-route-id="@m.Id">Open</a></td>
@@ -51,6 +100,7 @@
             }
             </tbody>
         </table>
+    </div>
     </div>
 </section>
 
