@@ -96,7 +96,7 @@
                     @if(Can(Permissions.ManageFeatures)){<a class="@Active("/Admin/Features")" asp-page="/Admin/Features/Index">@Icon("features")System features</a>}
                     @if(Can(Permissions.ManageLicense)){<a class="@Active("/Admin/License")" asp-page="/Admin/License/Index">@Icon("license")License</a>}
                     @if(Can(Permissions.ViewAudit)){<a class="@Active("/Admin/Audit")" asp-page="/Admin/Audit/Index">@Icon("audit")Audit trail</a>}
-                    @if(Can(Permissions.BackupRestore)){<a class="sb-link" asp-page="/Operations/Index" asp-fragment="backup">@Icon("backup")Backup &amp; restore</a>}
+                    @if(Can(Permissions.BackupRestore)){<a class="@Active("/Admin/Backup")" asp-page="/Admin/Backup/Index">@Icon("backup")Backup &amp; restore</a>}
                 }
                 @if(signedIn && !isAdmin){
                     <a class="@Active("/Admin/Login")" asp-page="/Admin/Login">@Icon("login")Administrator login</a>

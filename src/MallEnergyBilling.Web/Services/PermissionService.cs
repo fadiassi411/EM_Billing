@@ -69,7 +69,6 @@ public static class Permissions
         [ManageTariffs] = [ViewOperations],
         [RunBilling] = [ViewOperations],
         [RecordPayments] = [ViewOperations],
-        [BackupRestore] = [ViewOperations],
         [EmailInvoices] = [ViewInvoices],
         [ReviewCounters] = [ViewMeters],
     };

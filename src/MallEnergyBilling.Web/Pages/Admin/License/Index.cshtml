@@ -35,13 +35,16 @@
   <p class="note">Send the Installation ID above to MicroBrain. Import the signed <strong>.wdlicense</strong> file you receive. The main PC does not need internet access.</p>
   <form method="post" enctype="multipart/form-data" asp-page-handler="Import">
     <div asp-validation-summary="All" class="validation"></div>
-    <label>License file<input asp-for="LicenseFile" type="file" accept=".wdlicense,application/json" /></label>
-    <button type="submit">Import and activate license</button>
+    <div class="license-import">
+      <label>License file (.wdlicense)<input asp-for="LicenseFile" type="file" accept=".wdlicense,application/json" required /></label>
+      <button type="submit">Import and activate license</button>
+    </div>
   </form>
   @if (s.IsLicensed)
   {
     <form method="post" asp-page-handler="Remove" class="license-remove" onsubmit="return confirm('Are you sure you want to remove this license? Free mode will allow 5 active meters.');">
-      <button type="submit" class="danger">Remove license</button>
+      <div class="license-remove-row"><span class="note">Removing the license returns this installation to free mode (5 active meters).</span>
+      <button type="submit" class="act act-danger"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg><span>Remove license</span></button></div>
     </form>
   }
 </section>

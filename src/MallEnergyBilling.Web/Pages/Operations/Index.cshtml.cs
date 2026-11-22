@@ -5,12 +5,11 @@ using MallEnergyBilling.Web.Models;
 using MallEnergyBilling.Web.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace MallEnergyBilling.Web.Pages.Operations;
 
-public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMaintenanceService maintenance, BillingRunService billing, TimeProvider time, PermissionService permissions) : PageModel
+public class IndexModel(ApplicationDbContext db, BillingRunService billing, TimeProvider time, PermissionService permissions) : PageModel
 {
     /// <summary>Permissions of the signed-in user, for showing only the sections they may use.</summary>
     public HashSet<string> Allowed { get; private set; } = [];
@@ -38,9 +37,6 @@ public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMai
     public DateOnly SuggestedInvoiceDate => Today;
     public DateOnly SuggestedDueDate => SuggestedInvoiceDate.AddDays(ActiveSchedule?.DueDays ?? 10);
 
-    public string BackupPath => paths.BackupDirectory;
-    public List<BackupFile> BackupFiles { get; set; } = [];
-    public sealed record BackupFile(string Name, long Size, DateTime Modified);
     public IReadOnlyList<string>Currencies{get;}=["UGX","USD","EUR","GBP","AED","AFN","ALL","AMD","ANG","AOA","ARS","AUD","AWG","AZN","BAM","BBD","BDT","BGN","BHD","BIF","BMD","BND","BOB","BRL","BSD","BTN","BWP","BYN","BZD","CAD","CDF","CHF","CLP","CNY","COP","CRC","CUP","CVE","CZK","DJF","DKK","DOP","DZD","EGP","ERN","ETB","FJD","FKP","GEL","GHS","GIP","GMD","GNF","GTQ","GYD","HKD","HNL","HTG","HUF","IDR","ILS","INR","IQD","IRR","ISK","JMD","JOD","JPY","KES","KGS","KHR","KMF","KPW","KRW","KWD","KYD","KZT","LAK","LBP","LKR","LRD","LSL","LYD","MAD","MDL","MGA","MKD","MMK","MNT","MOP","MRU","MUR","MVR","MWK","MXN","MYR","MZN","NAD","NGN","NIO","NOK","NPR","NZD","OMR","PAB","PEN","PGK","PHP","PKR","PLN","PYG","QAR","RON","RSD","RUB","RWF","SAR","SBD","SCR","SDG","SEK","SGD","SHP","SLE","SOS","SRD","SSP","STN","SVC","SYP","SZL","THB","TJS","TMT","TND","TOP","TRY","TTD","TWD","TZS","UAH","UYU","UZS","VES","VND","VUV","WST","XAF","XCD","XOF","XPF","YER","ZAR","ZMW","ZWL"];
 
     public async Task OnGet()
@@ -60,7 +56,6 @@ public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMai
             if (status != invoice.Status) invoice.Status = status;
         }
         if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync();
-        LoadBackups();
     }
 
     public async Task<IActionResult> OnPostTariff(int meterId, decimal price, string currency, string reason)
@@ -199,71 +194,9 @@ public class IndexModel(ApplicationDbContext db, AppDataPaths paths, DatabaseMai
         return value.IndexOfAny([',', '"', '\r', '\n']) >= 0 ? "\"" + value.Replace("\"", "\"\"") + "\"" : value;
     }
 
-    public async Task<IActionResult> OnPostBackup()
-    {
-        if (!await Has(Permissions.BackupRestore)) return Forbid();
-        await maintenance.Gate.WaitAsync(HttpContext.RequestAborted);
-        try
-        {
-            await db.Database.CloseConnectionAsync();
-            TempData["BackupSuccess"] = $"Backup created: {await BackupToAsync($"watch-dog-em-{DateTime.Now:yyyyMMdd-HHmmss}.db")}";
-        }
-        finally { maintenance.Gate.Release(); }
-        return RedirectToPage(null, null, "backup");
-    }
 
-    public async Task<IActionResult> OnPostRestore(string fileName)
-    {
-        if (!await Has(Permissions.BackupRestore)) return Forbid();
-        if (string.IsNullOrWhiteSpace(fileName) || Path.GetFileName(fileName) != fileName) { TempData["BackupError"] = "Invalid backup file."; return RedirectToPage(null, null, "backup"); }
-        var backupPath = Path.Combine(BackupPath, fileName);
-        if (!System.IO.File.Exists(backupPath)) { TempData["BackupError"] = "Backup file was not found."; return RedirectToPage(null, null, "backup"); }
-        await maintenance.Gate.WaitAsync(HttpContext.RequestAborted);
-        try
-        {
-            await db.Database.CloseConnectionAsync();
-            SqliteConnection.ClearAllPools();
-            await using (var source = new SqliteConnection($"Data Source={backupPath};Mode=ReadOnly"))
-            {
-                await source.OpenAsync();
-                await using (var check = source.CreateCommand())
-                {
-                    check.CommandText = "PRAGMA quick_check;";
-                    if (!string.Equals((string?)await check.ExecuteScalarAsync(), "ok", StringComparison.OrdinalIgnoreCase))
-                    { TempData["BackupError"] = "The selected backup failed its integrity check."; return RedirectToPage(null, null, "backup"); }
-                }
-                // Keep a copy of the current data first, so a wrong restore can be undone.
-                var safety = await BackupToAsync($"watch-dog-em-before-restore-{DateTime.Now:yyyyMMdd-HHmmss}.db");
-                maintenance.DatabaseReplaced();
-                await using var destination = new SqliteConnection($"Data Source={paths.DatabasePath}");
-                await destination.OpenAsync();
-                source.BackupDatabase(destination);
-                TempData["BackupSuccess"] = $"Restored {fileName}. The data from before the restore was saved as {safety}.";
-            }
-            SqliteConnection.ClearAllPools();
-            // A backup from an older version is upgraded to the current database structure straight away.
-            await db.Database.MigrateAsync();
-            maintenance.DatabaseReplaced();
-        }
-        finally { maintenance.Gate.Release(); }
-        return RedirectToPage(null, null, "backup");
-    }
 
-    async Task<string> BackupToAsync(string name)
-    {
-        Directory.CreateDirectory(BackupPath);
-        await using var source = new SqliteConnection($"Data Source={paths.DatabasePath};Mode=ReadOnly");
-        await using var destination = new SqliteConnection($"Data Source={Path.Combine(BackupPath, name)}");
-        await source.OpenAsync(); await destination.OpenAsync();
-        source.BackupDatabase(destination);
-        return name;
-    }
 
-    void LoadBackups()
-    {
-        Directory.CreateDirectory(BackupPath);
-        BackupFiles = new DirectoryInfo(BackupPath).GetFiles("*.db").OrderByDescending(x => x.LastWriteTimeUtc).Select(x => new BackupFile(x.Name, x.Length, x.LastWriteTime)).ToList();
-    }
 
     static string? ScheduleError(int cycleStartDay, int publishDelayDays, int dueDays) =>
         !BillingCycle.IsValidStartDay(cycleStartDay) ? $"Select a billing cycle start day from {BillingCycle.MinStartDay} to {BillingCycle.MaxStartDay}."
