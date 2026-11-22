@@ -1,5 +1,5 @@
 #define MyAppName "Watchdog Energy Management"
-#define MyAppVersion "4.6.2"
+#define MyAppVersion "4.6.3"
 #define MyAppPublisher "MicroBrain"
 #define MyAppExeName "MallEnergyBilling.Web.exe"
 
