@@ -629,6 +629,60 @@ namespace MallEnergyBilling.Web.Data.Migrations
                     b.ToTable("Payments");
                 });
 
+            modelBuilder.Entity("MallEnergyBilling.Web.Models.PendingMeterBill", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("BillingPeriodId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("Discount")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DueDays")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("FixedCharge")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("LastCheckedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("MeterId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("OtherCharge")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Resolution")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("TaxPercent")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MeterId");
+
+                    b.HasIndex("BillingPeriodId", "MeterId")
+                        .IsUnique();
+
+                    b.ToTable("PendingMeterBills");
+                });
+
             modelBuilder.Entity("MallEnergyBilling.Web.Models.Shop", b =>
                 {
                     b.Property<int>("Id")
@@ -1079,6 +1133,25 @@ namespace MallEnergyBilling.Web.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Invoice");
+                });
+
+            modelBuilder.Entity("MallEnergyBilling.Web.Models.PendingMeterBill", b =>
+                {
+                    b.HasOne("MallEnergyBilling.Web.Models.BillingPeriod", "BillingPeriod")
+                        .WithMany()
+                        .HasForeignKey("BillingPeriodId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MallEnergyBilling.Web.Models.Meter", "Meter")
+                        .WithMany()
+                        .HasForeignKey("MeterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("BillingPeriod");
+
+                    b.Navigation("Meter");
                 });
 
             modelBuilder.Entity("MallEnergyBilling.Web.Models.Tariff", b =>

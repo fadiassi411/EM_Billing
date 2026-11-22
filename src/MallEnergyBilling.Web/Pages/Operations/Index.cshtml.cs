@@ -30,6 +30,8 @@ public class IndexModel(ApplicationDbContext db, BillingRunService billing, Time
     public List<MeterReading> FutureReadings { get; private set; } = [];
     /// <summary>Active meters that would stop the billing run because they have no tariff.</summary>
     public List<Meter> MetersWithoutTariff { get; private set; } = [];
+    /// <summary>Meters that could not be billed for a period yet. The other meters of that period were billed.</summary>
+    public List<PendingMeterBill> WaitingMeters { get; private set; } = [];
     /// <summary>Active meters whose serial number is still the generated placeholder; it would be printed on the invoice.</summary>
     public List<Meter> MetersWithPlaceholderSerial { get; private set; } = [];
     public const int AllMetersWithoutTariff = -1, AllActiveMeters = -2;
@@ -72,6 +74,8 @@ public class IndexModel(ApplicationDbContext db, BillingRunService billing, Time
         var waterEnabled = await db.SystemFeatureConfigurations.AsNoTracking().AnyAsync(x => x.Id == 1 && x.WaterBillingEnabled);
         var priced = (await db.Tariffs.AsNoTracking().Where(x => x.MeterId != null).Select(x => x.MeterId!.Value).ToListAsync()).ToHashSet();
         MetersWithoutTariff = Meters.Where(x => x.Active && (waterEnabled || x.UtilityType != UtilityType.Water) && !priced.Contains(x.Id)).OrderBy(x => x.Name).ToList();
+        WaitingMeters = (await db.PendingMeterBills.AsNoTracking().Include(x => x.Meter).ThenInclude(x => x!.Shop).Include(x => x.BillingPeriod).Where(x => x.ResolvedAt == null).ToListAsync())
+            .OrderBy(x => x.BillingPeriod!.StartDate).ThenBy(x => x.Meter!.Name).ToList();
         MetersWithPlaceholderSerial = Meters.Where(x => x.Active && x.SerialNumber.StartsWith("PENDING-", StringComparison.OrdinalIgnoreCase)).OrderBy(x => x.Name).ToList();
     }
 
@@ -186,8 +190,28 @@ public class IndexModel(ApplicationDbContext db, BillingRunService billing, Time
         var outcome = await billing.GenerateAsync(new BillingRunRequest(periodStart, periodEnd, invoiceDate, dueDate, fixedCharge, otherCharge, taxPercent, discount,
             Publish: false, User: UserName("Administrator"), SourceIp: SourceIp()), HttpContext.RequestAborted);
         if (!outcome.Created) return BillingError(outcome.AlreadyExists ? "This billing period already exists." : outcome.Message);
-        TempData["BillingSuccess"] = $"{outcome.InvoiceCount} draft invoice(s) created. Review them, then finalize the billing period.";
+        TempData["BillingSuccess"] = $"{outcome.InvoiceCount} draft invoice(s) created. Review them, then finalize the billing period."
+            + (outcome.WaitingCount == 0 ? "" : $" {outcome.WaitingCount} meter(s) could not be billed yet and are listed under Meters waiting to be billed.");
         return RedirectToPage(null, null, "billing");
+    }
+
+    /// <summary>Tries again now to bill the meters that are waiting (the service also does this every few minutes).</summary>
+    public async Task<IActionResult> OnPostBillWaiting()
+    {
+        if (!await Has(Permissions.RunBilling)) return Forbid();
+        var outcome = await billing.BillWaitingMetersAsync(UserName("Administrator"), SourceIp(), HttpContext.RequestAborted);
+        TempData[outcome.Created ? "BillingSuccess" : "BillingError"] = outcome.Message;
+        return RedirectToPage(null, null, "tariffs");
+    }
+
+    /// <summary>Decides that a waiting meter is not billed for that period.</summary>
+    public async Task<IActionResult> OnPostDismissWaiting(int id, string reason)
+    {
+        if (!await Has(Permissions.RunBilling)) return Forbid();
+        if (string.IsNullOrWhiteSpace(reason)) { TempData["BillingError"] = "Enter the reason why this meter is not billed."; return RedirectToPage(null, null, "tariffs"); }
+        var done = await billing.DismissWaitingAsync(id, UserName("Administrator"), reason.Trim(), SourceIp(), HttpContext.RequestAborted);
+        TempData[done ? "BillingSuccess" : "BillingError"] = done ? "The meter will not be billed for that period." : "That waiting meter was not found; it may already be billed.";
+        return RedirectToPage(null, null, "tariffs");
     }
 
     public async Task<IActionResult> OnPostFinalizeInvoices(int periodId)

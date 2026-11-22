@@ -53,10 +53,10 @@ public sealed class InvoicePdfService
         var sign=s.AddTable();sign.AddColumn(Unit.FromMillimeter(70));sign.AddColumn(Unit.FromMillimeter(20));sign.AddColumn(Unit.FromMillimeter(70));var sr=sign.AddRow();sr.Cells[0].Borders.Top.Width=.7;sr.Cells[0].AddParagraph("Prepared by").Format.Font.Color=gray;sr.Cells[2].Borders.Top.Width=.7;sr.Cells[2].AddParagraph("Authorized signature").Format.Font.Color=gray;
         return d;
     }
-    /// <summary>The consumption period: from the billing period, or from the snapshot saved with the invoice.</summary>
+    /// <summary>The consumption period saved with the invoice (it can start earlier than the billing period when a
+    /// month that could not be billed is included), falling back to the billing period.</summary>
     static (DateOnly Start, DateOnly End)? Period(Invoice i)
     {
-        if (i.BillingPeriod is { } p) return (p.StartDate, p.EndDate);
         try
         {
             using var json = System.Text.Json.JsonDocument.Parse(string.IsNullOrWhiteSpace(i.SnapshotJson) ? "{}" : i.SnapshotJson);
@@ -64,7 +64,7 @@ public sealed class InvoicePdfService
                 && DateOnly.TryParse(s.GetString(), out var start) && DateOnly.TryParse(e.GetString(), out var end)) return (start, end);
         }
         catch (System.Text.Json.JsonException) { }
-        return null;
+        return i.BillingPeriod is { } p ? (p.StartDate, p.EndDate) : null;
     }
     static void AddInfo(Cell c,string title,string line1,string line2){c.Format.LeftIndent=Unit.FromMillimeter(4);c.Format.RightIndent=Unit.FromMillimeter(4);var p=c.AddParagraph(title);p.Format.Font.Bold=true;p.Format.Font.Size=8;p.Format.Font.Color=Color.Parse("#0C8C84");p.Format.SpaceBefore=Unit.FromMillimeter(3);var x=c.AddParagraph(line1);x.Format.Font.Bold=true;x.Format.Font.Size=11;var y=c.AddParagraph(line2);y.Format.SpaceAfter=Unit.FromMillimeter(3);}
     static void Header(Row r,params string[] text){for(int x=0;x<text.Length;x++){var p=r.Cells[x].AddParagraph(text[x]);p.Format.Font.Bold=true;p.Format.Font.Size=7;p.Format.Font.Color=Color.Parse("#667781");}}
