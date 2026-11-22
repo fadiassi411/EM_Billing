@@ -14,7 +14,7 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
     public List<Shop> Shops { get; private set; } = [];
     [BindProperty, Range(0, 65535)] public int FirstRegister { get; set; } = 4196;
     [BindProperty, Range(1, 100)] public int RegisterStride { get; set; } = 2;
-    [BindProperty] public string BacnetObjectType { get; set; } = "AnalogInput";
+    [BindProperty] public string? BacnetObjectType { get; set; } = "AnalogInput";
     [BindProperty, Range(0, 4194303)] public int FirstBacnetObjectInstance { get; set; }
     [BindProperty, Range(1, 1000)] public int BacnetObjectStride { get; set; } = 1;
     [BindProperty, Range(1, 45)] public int ChannelCount { get; set; } = 45;
@@ -35,6 +35,7 @@ public sealed class ChannelsModel(ApplicationDbContext db) : PageModel
         if (!await db.Shops.AnyAsync(x => x.Id == ShopId)) ModelState.AddModelError(nameof(ShopId), "Select a temporary or final shop assignment.");
         if (Meters.Count + ChannelCount > 45) ModelState.AddModelError(nameof(ChannelCount), $"This controller already has {Meters.Count} channels; maximum is 45.");
         var isBacnet = Controller.CommunicationType == "BacnetIp";
+        if (string.IsNullOrWhiteSpace(BacnetObjectType)) BacnetObjectType = "AnalogInput"; // not shown for Modbus controllers
         var lastRegister = FirstRegister + (ChannelCount - 1) * RegisterStride;
         if (!isBacnet && lastRegister > 65535) ModelState.AddModelError(nameof(FirstRegister), "The generated register range exceeds 65535.");
         var lastObject = FirstBacnetObjectInstance + (ChannelCount - 1) * BacnetObjectStride;
