@@ -26,6 +26,7 @@ The installer is self-contained; customers do not need to install .NET. Existing
 ## Features
 
 - BACnet/IP device discovery, object browsing, configurable meter points and real asynchronous reads; see the [V2.4.0 BACnet commissioning guide](Documentation/BACnet-IP-commissioning.md).
+- Wired M-Bus meters (energy, heat and water) through a transparent M-Bus to Ethernet gateway, by primary or secondary address; see the [M-Bus commissioning guide](Documentation/MBus-commissioning.md).
 
 - Selectable Modbus RTU over Windows serial ports or Modbus TCP/IP over Ethernet
 - Multiple controllers with up to 45 meter channels per controller

@@ -36,7 +36,7 @@ public sealed class ModbusPollingTests
         }
         var transport = new FakeModbus();
         var poller = new MeterPollingService(provider.GetRequiredService<IServiceScopeFactory>(), transport,
-            null!, new DatabaseMaintenanceService(), NullLogger<MeterPollingService>.Instance);
+            null!, null!, new DatabaseMaintenanceService(), NullLogger<MeterPollingService>.Instance);
         async Task Poll() => await (Task)typeof(MeterPollingService)
             .GetMethod("PollController", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(poller, new object[] { 1, CancellationToken.None })!;

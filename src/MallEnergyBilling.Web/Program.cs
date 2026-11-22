@@ -80,6 +80,7 @@ builder.Services.Configure<SecurityStampValidatorOptions>(o => o.ValidationInter
 builder.Services.AddSingleton<BillingCalculator>();
 builder.Services.AddSingleton<TariffResolver>();
 builder.Services.AddSingleton<IModbusService, ModbusService>();
+builder.Services.AddSingleton<IMBusService, MBusService>();
 builder.Services.AddSingleton<IBacnetTransport, BacnetTransport>();
 builder.Services.AddSingleton<IBacnetIpService, BacnetIpService>();
 builder.Services.AddHostedService<BacnetPollingService>();
