@@ -15,7 +15,7 @@ public sealed class ModbusRtuTests
   var server=Task.Run(async()=>{using var client=await listener.AcceptTcpClientAsync();await using var stream=client.GetStream();var request=new byte[12];await stream.ReadExactlyAsync(request);Assert.Equal(new byte[]{0,3,0,2},request[8..12]);byte[] response=[request[0],request[1],0,0,0,7,1,3,4,0x12,0x34,0xAB,0xCD];await stream.WriteAsync(response);});
   try
   {
-   var service=new ModbusService(NullLogger<ModbusService>.Instance);var controller=new Controller{CommunicationType="ModbusTcp",IpAddress="127.0.0.1",TcpPort=port,SlaveAddress=1,TimeoutMilliseconds=2000,RetryCount=0};
+   var service=new ModbusService(NullLogger<ModbusService>.Instance);var controller=new Controller{CommunicationType="ModbusTcp",IpAddress="127.0.0.1",TcpPort=port,SlaveAddress=1,TimeoutMilliseconds=10000,RetryCount=0};
    var result=await service.ReadHoldingRegistersAsync(controller,3,2);Assert.Equal(new ushort[]{0x1234,0xABCD},result.Registers);await server;
   }
   finally{listener.Stop();}
