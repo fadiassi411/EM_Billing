@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace MallEnergyBilling.Web.Pages.Invoices;
 
 [Authorize]
-public sealed class DetailsModel(ApplicationDbContext db, InvoicePdfService pdf, InvoiceEmailService email, PermissionService permissions) : PageModel
+public sealed class DetailsModel(ApplicationDbContext db, InvoiceArchiveService archive, InvoiceEmailService email, PermissionService permissions) : PageModel
 {
     public Invoice Invoice { get; private set; } = null!;
     public bool EmailEnabled { get; private set; }
@@ -32,7 +32,8 @@ public sealed class DetailsModel(ApplicationDbContext db, InvoicePdfService pdf,
     {
         var invoice = await Load(id);
         if (invoice is null) return NotFound();
-        return File(pdf.Generate(invoice), "application/pdf", $"{invoice.InvoiceNumber}.pdf");
+        // Published: the archived copy as issued. Draft: a fresh preview, never archived.
+        return File(await archive.ReadAsync(invoice, HttpContext.RequestAborted), "application/pdf", InvoiceArchiveService.FileName(invoice));
     }
 
     public async Task<IActionResult> OnPostSendEmailAsync(int id)
