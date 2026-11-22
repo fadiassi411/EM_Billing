@@ -12,6 +12,18 @@ public sealed class IndexModel(ApplicationDbContext db) : PageModel
 {
     [BindProperty] public InputModel Input { get; set; } = new();
     public List<Shop> Shops { get; private set; } = [];
+    public Dictionary<int, int> MeterCounts { get; private set; } = [];
+    public Dictionary<int, int> InvoiceCounts { get; private set; } = [];
+
+    /// <summary>Why a shop cannot be deleted, or null when it can.</summary>
+    public string? DeleteBlockedReason(int shopId)
+    {
+        var meters = MeterCounts.GetValueOrDefault(shopId);
+        var invoices = InvoiceCounts.GetValueOrDefault(shopId);
+        if (meters > 0) return $"This shop still has {meters} meter{(meters == 1 ? "" : "s")}. Move them to another shop or delete them in Controller setup first.";
+        if (invoices > 0) return $"This shop has {invoices} invoice{(invoices == 1 ? "" : "s")} in its billing history, which must be kept. Set its status to Inactive or Vacant instead.";
+        return null;
+    }
 
     public sealed class InputModel
     {
@@ -55,5 +67,37 @@ public sealed class IndexModel(ApplicationDbContext db) : PageModel
         return RedirectToPage();
     }
 
-    private async Task LoadAsync() => Shops = await db.Shops.OrderBy(x => x.ShopNumber).ToListAsync();
+    public async Task<IActionResult> OnPostDeleteAsync(int shopId)
+    {
+        var shop = await db.Shops.FirstOrDefaultAsync(x => x.Id == shopId);
+        if (shop is null)
+        {
+            TempData["Error"] = "That shop no longer exists. It was probably already deleted; the list below is up to date.";
+            return RedirectToPage();
+        }
+        await LoadCountsAsync();
+        // Meters and invoices point at the shop; deleting it would cascade and erase them, so refuse.
+        if (DeleteBlockedReason(shop.Id) is { } reason)
+        {
+            TempData["Error"] = $"{shop.ShopNumber} was not deleted. {reason}";
+            return RedirectToPage();
+        }
+        db.Shops.Remove(shop);
+        db.AuditLogs.Add(new AuditLog { Timestamp=DateTimeOffset.UtcNow, UserId=User.Identity?.Name??"Administrator", Action="Shop deleted", EntityType="Shop", EntityId=shop.Id.ToString(), OldValue=JsonSerializer.Serialize(shop), Reason="Deleted from Shop setup", SourceIp=HttpContext.Connection.RemoteIpAddress?.ToString()??"" });
+        await db.SaveChangesAsync();
+        TempData["Message"] = $"Shop {shop.ShopNumber} deleted.";
+        return RedirectToPage();
+    }
+
+    private async Task LoadAsync()
+    {
+        Shops = await db.Shops.OrderBy(x => x.ShopNumber).ToListAsync();
+        await LoadCountsAsync();
+    }
+
+    private async Task LoadCountsAsync()
+    {
+        MeterCounts = await db.Meters.GroupBy(x => x.ShopId).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count);
+        InvoiceCounts = await db.Invoices.GroupBy(x => x.ShopId).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count);
+    }
 }
