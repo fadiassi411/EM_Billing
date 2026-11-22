@@ -45,7 +45,7 @@ public sealed class IndexModel(ApplicationDbContext db, InvoiceEmailService emai
 
         saved ??= new SmtpConfiguration { Id = 1 };
         if (db.Entry(saved).State == EntityState.Detached) db.SmtpConfigurations.Add(saved);
-        saved.Enabled=Input.Enabled;saved.AutoSendPublishedInvoices=Input.Enabled&&Input.AutoSendPublishedInvoices;saved.Host=Input.Host.Trim();saved.Port=Input.Port;saved.EnableSsl=Input.EnableSsl;saved.Username=Input.Username.Trim();saved.FromEmail=Input.FromEmail.Trim();saved.FromName=string.IsNullOrWhiteSpace(Input.FromName)?"Watchdog Energy Management":Input.FromName.Trim();saved.EmailMessage=NormalizeMessage(Input.EmailMessage);saved.UpdatedAt=DateTimeOffset.UtcNow;saved.UpdatedBy=User.Identity?.Name??"Administrator";
+        saved.Enabled=Input.Enabled;saved.AutoSendPublishedInvoices=Input.Enabled&&Input.AutoSendPublishedInvoices;saved.Host=(Input.Host??"").Trim();saved.Port=Input.Port;saved.EnableSsl=Input.EnableSsl;saved.Username=(Input.Username??"").Trim();saved.FromEmail=(Input.FromEmail??"").Trim();saved.FromName=string.IsNullOrWhiteSpace(Input.FromName)?"Watchdog Energy Management":Input.FromName.Trim();saved.EmailMessage=NormalizeMessage(Input.EmailMessage);saved.UpdatedAt=DateTimeOffset.UtcNow;saved.UpdatedBy=User.Identity?.Name??"Administrator";
         if (!string.IsNullOrWhiteSpace(Input.Password)) saved.ProtectedPassword=email.ProtectPassword(Input.Password);
         if (!saved.AutoSendPublishedInvoices)
         {
@@ -64,7 +64,7 @@ public sealed class IndexModel(ApplicationDbContext db, InvoiceEmailService emai
         PasswordSaved = !string.IsNullOrWhiteSpace(saved?.ProtectedPassword);
         ValidateConfiguration(requireRecipient: true, PasswordSaved);
         if (!ModelState.IsValid) return Page();
-        var candidate = new SmtpConfiguration { Host=Input.Host.Trim(),Port=Input.Port,EnableSsl=Input.EnableSsl,Username=Input.Username.Trim(),FromEmail=Input.FromEmail.Trim(),FromName=string.IsNullOrWhiteSpace(Input.FromName)?"Watchdog Energy Management":Input.FromName.Trim(),EmailMessage=NormalizeMessage(Input.EmailMessage) };
+        var candidate = new SmtpConfiguration { Host=(Input.Host??"").Trim(),Port=Input.Port,EnableSsl=Input.EnableSsl,Username=(Input.Username??"").Trim(),FromEmail=(Input.FromEmail??"").Trim(),FromName=string.IsNullOrWhiteSpace(Input.FromName)?"Watchdog Energy Management":Input.FromName.Trim(),EmailMessage=NormalizeMessage(Input.EmailMessage) };
         string password;
         try { password = string.IsNullOrWhiteSpace(Input.Password) && saved is not null ? email.UnprotectPassword(saved.ProtectedPassword) : Input.Password ?? ""; }
         catch

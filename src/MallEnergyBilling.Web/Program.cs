@@ -54,7 +54,10 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AuthorizeFolder("/Admin/License", Permissions.PolicyName(Permissions.ManageLicense));
     // Users and user levels stay with Administrators, so nobody can give themselves more rights.
     o.Conventions.AuthorizeFolder("/Admin/Users", "AdministratorOnly");
-});
+}).AddMvcOptions(o =>
+    // Only fields marked [Required] are required. Without this, every optional text box
+    // (Reason, Tenant, a hidden BACnet field on a Modbus form, ...) was rejected when left empty.
+    o.SuppressImplicitRequiredAttributeForNonNullableReferenceTypes = true);
 builder.Services.AddAuthorization(o =>
 {
     o.AddPolicy("AdministratorOnly", p => p.RequireRole("Administrator"));

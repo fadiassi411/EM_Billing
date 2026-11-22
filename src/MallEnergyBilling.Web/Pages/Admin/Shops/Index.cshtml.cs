@@ -35,17 +35,17 @@ public sealed class IndexModel(ApplicationDbContext db) : PageModel
 
     public async Task<IActionResult> OnPostAsync()
     {
-        Input.ShopNumber = Input.ShopNumber.Trim().ToUpperInvariant();
+        Input.ShopNumber = (Input.ShopNumber ?? "").Trim().ToUpperInvariant();
         if (await db.Shops.AnyAsync(x => x.ShopNumber == Input.ShopNumber))
             ModelState.AddModelError("Input.ShopNumber", "This shop number already exists.");
         if (!ModelState.IsValid) { await LoadAsync(); return Page(); }
 
         var shop = new Shop
         {
-            ShopNumber=Input.ShopNumber, Name=Input.Name.Trim(), TenantName=Input.TenantName.Trim(),
-            ContactPerson=Input.ContactPerson.Trim(), Telephone=Input.Telephone.Trim(), Email=Input.Email.Trim(),
-            Floor=Input.Floor.Trim(), Zone=Input.Zone.Trim(), MdbPanel=Input.MdbPanel.Trim(), Status=Input.Status,
-            BillingAddress=Input.BillingAddress.Trim(), TaxNumber=Input.TaxNumber.Trim(), Notes=Input.Notes.Trim()
+            ShopNumber=Input.ShopNumber, Name=Input.Name.Trim(), TenantName=Input.TenantName?.Trim()??"",
+            ContactPerson=Input.ContactPerson?.Trim()??"", Telephone=Input.Telephone?.Trim()??"", Email=Input.Email?.Trim()??"",
+            Floor=Input.Floor?.Trim()??"", Zone=Input.Zone?.Trim()??"", MdbPanel=Input.MdbPanel?.Trim()??"", Status=Input.Status,
+            BillingAddress=Input.BillingAddress?.Trim()??"", TaxNumber=Input.TaxNumber?.Trim()??"", Notes=Input.Notes?.Trim()??""
         };
         db.Shops.Add(shop);
         await db.SaveChangesAsync();
