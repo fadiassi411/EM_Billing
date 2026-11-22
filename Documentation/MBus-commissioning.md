@@ -47,3 +47,7 @@ Counter decreases go to **Counter review**, exactly as for Modbus and BACnet met
 - Wired M-Bus only. Wireless M-Bus (868 MHz radio) is not supported.
 - Only the first telegram of each meter is read. Meters that split their data over several telegrams show "more records exist in a second telegram" on the Read meter page. The current totals are almost always in the first telegram.
 - Encrypted M-Bus data (used by some wireless meters) is not supported.
+
+## Matching the meter display (offset)
+
+Every Modbus and M-Bus meter has an **Offset** on its Edit page. Watchdog shows *device value × scaling factor + offset*. If the PLC or gateway counts from 0 but the meter display already shows a total, type the number on the meter display into **Meter display now** and press **Calculate offset**, then save. Changing the offset starts a new counter on the next reading, so the difference is never billed.

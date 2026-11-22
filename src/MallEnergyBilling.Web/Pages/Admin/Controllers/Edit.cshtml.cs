@@ -107,7 +107,7 @@ public sealed class EditModel(ApplicationDbContext db, IModbusService modbus, IB
                 else
                 {
                     var result=await modbus.ReadHoldingRegistersAsync(config,meter.StartingRegister,ModbusValueConverter.RegisterCount(meter.DataType),HttpContext.RequestAborted);
-                    value=ModbusValueConverter.ConvertValue(result.Registers,meter.DataType,meter.WordOrder,meter.ScalingFactor);
+                    value=ModbusValueConverter.ConvertValue(result.Registers,meter.DataType,meter.WordOrder,meter.ScalingFactor)+meter.Offset;
                     detail=$"registers [{string.Join(", ",result.Registers)}], request {result.RequestHex}; response {result.ResponseHex}";
                 }
                 TestResult=$"PASS - device replied. Meter {meter.Name}, {detail}, converted value {value:N3} {meter.Unit}.";

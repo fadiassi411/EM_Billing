@@ -234,6 +234,8 @@ public sealed class MBusGatewayTests
         Assert.Equal(1234.56m, (await MeterPollingService.ReadMBusAsync(service, Gateway(gateway.Port), water, default)).Value);
         var chosen = new Meter { Name = "W2", StartingRegister = 7, UtilityType = UtilityType.Water, ScalingFactor = 2, MBusRecord = 4 };
         Assert.Equal(24691.356m, (await MeterPollingService.ReadMBusAsync(service, Gateway(gateway.Port), chosen, default)).Value);
+        var withOffset = new Meter { Name = "E2", StartingRegister = 7, UtilityType = UtilityType.Electricity, ScalingFactor = 1, Offset = -45m };
+        Assert.Equal(12300m, (await MeterPollingService.ReadMBusAsync(service, Gateway(gateway.Port), withOffset, default)).Value);
     }
 
     [Fact] public async Task SilentMeterDoesNotStopTheOthersOnTheBus()

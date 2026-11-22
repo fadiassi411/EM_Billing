@@ -83,6 +83,53 @@ public sealed class ModbusPollingTests
         }
     }
 
+    [Fact]
+    public async Task OffsetMakesTheReadingMatchTheMeterDisplayAndAChangeIsNotBilled()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var provider = new ServiceCollection()
+            .AddDbContext<ApplicationDbContext>(o => o.UseSqlite(connection)).BuildServiceProvider();
+        using (var scope = provider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            await db.Database.EnsureCreatedAsync();
+            db.Meters.Add(new Meter { Name = "PLC meter", SerialNumber = "OFF-1", Controller = new Controller { Name = "PLC", CommunicationType = "ModbusRtu" },
+                Shop = new Shop { Name = "Test", ShopNumber = "T1" }, StartingRegister = 10, DataType = RegisterDataType.UInt16,
+                ScalingFactor = 0.1m, Offset = 15234.5m, Active = true, CommunicationStatus = "Awaiting poll" });
+            await db.SaveChangesAsync();
+        }
+        var transport = new FakeModbus { Values = new() { [10] = 250 } }; // the PLC has counted 25.0 kWh since it started
+        var poller = new MeterPollingService(provider.GetRequiredService<IServiceScopeFactory>(), transport,
+            null!, null!, new DatabaseMaintenanceService(), NullLogger<MeterPollingService>.Instance);
+        async Task Poll() => await (Task)typeof(MeterPollingService)
+            .GetMethod("PollController", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(poller, new object[] { 1, CancellationToken.None })!;
+        await Poll();
+        using (var scope = provider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var meter = await db.Meters.SingleAsync();
+            Assert.Equal(15259.5m, meter.LastReading); // same as the meter display
+            var reading = await db.MeterReadings.SingleAsync();
+            Assert.Equal(15259.5m, reading.AccumulatedKwh);
+            Assert.Equal(250UL, reading.RawValue); // the device value is kept unchanged
+            // The administrator corrects the offset; the edit page marks the next value as a new starting point.
+            meter.Offset = 15300m; meter.RebaseOnNextReading = true;
+            await db.SaveChangesAsync();
+        }
+        transport.Values[10] = 260;
+        await Poll();
+        using (var scope = provider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var readings = await db.MeterReadings.OrderBy(r => r.Id).ToArrayAsync();
+            Assert.Equal(15326m, readings[^1].AccumulatedKwh);
+            Assert.Equal(BillingRunService.BaselineQuality, readings[^1].Quality); // the +40.5 offset change is a new start, not consumption
+            Assert.Equal(260UL, readings[^1].RawValue);
+        }
+    }
+
     private sealed class FakeModbus : IModbusService
     {
         public bool Fail { get; set; }
