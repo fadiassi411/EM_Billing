@@ -7,6 +7,10 @@ namespace MallEnergyBilling.Web.Services;
 public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusService modbus, IBacnetIpService bacnet, IMBusService mbus, DatabaseMaintenanceService maintenance, ILogger<MeterPollingService> log) : BackgroundService
 {
     readonly Dictionary<int, DateTimeOffset> nextPoll = [];
+    /// <summary>Longest allowed polling interval (1 hour) plus a margin.</summary>
+    public static readonly TimeSpan MaxPollWait = TimeSpan.FromSeconds(3600 + 60);
+    /// <summary>Due when never polled, when the time has come, or when the next-poll time is further away than any interval (the PC clock was moved back).</summary>
+    public static bool IsDue(DateTimeOffset? nextAt, DateTimeOffset now) => nextAt is null || nextAt <= now || nextAt > now + MaxPollWait;
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         try
@@ -21,7 +25,8 @@ public sealed class MeterPollingService(IServiceScopeFactory scopes, IModbusServ
                 {
                     using var scope = scopes.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(); var now = DateTimeOffset.UtcNow;
                     due = await db.Controllers.Where(x => x.Enabled && (x.CommunicationType == "ModbusRtu" || x.CommunicationType == "ModbusTcp" || x.CommunicationType == "MBusTcp") && db.Meters.Any(m => m.ControllerId == x.Id && m.Active)).Select(x => x.Id).ToListAsync(ct);
-                    due = due.Where(id => !nextPoll.TryGetValue(id, out var at) || at <= now).ToList();
+                    // A next-poll time more than the longest interval away means the PC clock was moved back: poll now.
+                    due = due.Where(id => IsDue(nextPoll.TryGetValue(id, out var at) ? at : null, now)).ToList();
                 }
                 finally { maintenance.Gate.Release(); }
                 foreach (var id in due) await PollController(id, ct);

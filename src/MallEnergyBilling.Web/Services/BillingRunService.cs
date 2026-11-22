@@ -133,7 +133,7 @@ public sealed class BillingRunService(ApplicationDbContext db, BillingCalculator
                     request.FixedCharge, request.OtherCharge, request.TaxPercent, request.Discount, previousBalance, consumption));
             }
             catch (InvalidOperationException ex) { errors.Add($"{meter.Name}: {ex.Message}"); continue; }
-            var note = resets.Count == 0 ? "" : $"Meter reset/replaced on {string.Join(", ", resets.Select(x => x.ToLocalTime().ToString("dd MMM yyyy HH:mm")))}; consumption is calculated across the reset.";
+            var note = resets.Count == 0 ? "" : $"The meter counter was restarted {(resets.Count == 1 ? "on" : $"{resets.Count} times, from")} {resets[0].ToLocalTime():dd MMM yyyy HH:mm}{(resets.Count == 1 ? "" : $" to {resets[^1].ToLocalTime():dd MMM yyyy HH:mm}")} (meter replaced or its settings changed). Consumption is the usage measured before and after the restart, so it is not simply current minus previous reading.";
             lines.Add(new(meter.Id, meter.Name, meter.Shop?.Name ?? "", meter.Unit, opening?.Value ?? meter.InitialReading, closing.Value,
                 opening?.Timestamp, closing.Timestamp, tariff.PricePerKwh, tariff.Currency, previousBalance, result, opening?.Id, closing.Id, note));
         }

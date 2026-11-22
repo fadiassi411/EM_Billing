@@ -130,6 +130,17 @@ public sealed class ModbusPollingTests
         }
     }
 
+    [Fact]
+    public void PollingResumesAfterThePcClockWasMovedBack()
+    {
+        var now = new DateTimeOffset(2026, 11, 22, 17, 0, 0, TimeSpan.Zero);
+        Assert.True(MeterPollingService.IsDue(null, now));
+        Assert.True(MeterPollingService.IsDue(now.AddSeconds(-1), now));
+        Assert.False(MeterPollingService.IsDue(now.AddSeconds(5), now));      // normal wait
+        Assert.False(MeterPollingService.IsDue(now.AddMinutes(60), now));     // longest interval
+        Assert.True(MeterPollingService.IsDue(now.AddDays(31), now));         // scheduled while the clock showed 23 Dec
+    }
+
     private sealed class FakeModbus : IModbusService
     {
         public bool Fail { get; set; }
