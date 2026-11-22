@@ -315,6 +315,40 @@ public sealed class BillingRunTests : IAsyncLifetime
         Assert.Equal(BillingCycle.LocalTime(D(2027, 1, 1), BillingCycle.RunTime), (await Schedule()).GenerateAt);
     }
 
+    [Fact] public async Task ClockMovedForwardAndBackDoesNotStallTheScheduleOrBilling()
+    {
+        // November readings, then the PC clock is moved to 23 Dec for a test and back to 22 Nov.
+        await Readings(Good(At(2026, 10, 31, 23), 1000), Good(At(2026, 11, 22, 10), 1040));
+        await AddSchedule(1, 0, D(2026, 12, 1));
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var db = Db(scope);
+            var schedule = await db.InvoiceSchedules.SingleAsync(x => !x.Completed);
+            schedule.LastAttemptAt = At(2026, 12, 23, 18); // the blocked attempt made while the clock was wrong
+            db.MeterReadings.Add(new MeterReading { MeterId = meterId, AccumulatedKwh = 1040, Timestamp = At(2026, 12, 23, 18), Quality = "Good" });
+            await db.SaveChangesAsync();
+        }
+        clock.SetUtcNow(At(2026, 11, 22, 12)); // clock back to the real date
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var future = await ClockCheck.FutureReadingsAsync(Db(scope), clock.GetUtcNow());
+            Assert.Equal(1040m, Assert.Single(future).AccumulatedKwh);
+            Assert.Equal(1, await ClockCheck.RejectFutureReadingsAsync(Db(scope), clock.GetUtcNow(), "admin", "127.0.0.1"));
+            Assert.Empty(await ClockCheck.FutureReadingsAsync(Db(scope), clock.GetUtcNow()));
+        }
+        await Readings(Good(At(2026, 11, 30, 23), 1100));
+        // On the real 1 December the run must happen, not wait until 23 December.
+        clock.SetUtcNow(At(2026, 12, 1, 0, 10));
+        await Scheduler().RunDueSchedulesAsync();
+        var invoice = Assert.Single(await Invoices());
+        Assert.Equal(100, invoice.ConsumptionKwh);
+        // In December the rejected 23-Dec reading is in the past but is still never billed.
+        await Readings(Good(At(2026, 12, 23, 12), 1180), Good(At(2026, 12, 31, 23), 1200));
+        clock.SetUtcNow(At(2027, 1, 1, 0, 10));
+        await Scheduler().RunDueSchedulesAsync();
+        Assert.Equal(new decimal[] { 100, 100 }, (await Invoices()).Select(x => x.ConsumptionKwh));
+    }
+
     [Fact] public async Task MidMonthCycleIsPublishedAfterTheDelay()
     {
         await Readings(Good(At(2026, 10, 24, 23), 1000), Good(At(2026, 11, 24, 23), 1080));

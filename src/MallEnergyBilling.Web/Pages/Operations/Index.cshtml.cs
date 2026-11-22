@@ -26,6 +26,11 @@ public class IndexModel(ApplicationDbContext db, BillingRunService billing, Time
     public List<InvoiceSchedule> InvoiceSchedules { get; set; } = [];
     public InvoiceSchedule? ActiveSchedule => InvoiceSchedules.FirstOrDefault(x => !x.Completed);
     public BillingPreview? Preview { get; private set; }
+    /// <summary>Readings stamped after the current time (the PC clock was moved forward and back).</summary>
+    public List<MeterReading> FutureReadings { get; private set; } = [];
+    /// <summary>Active meters that would stop the billing run because they have no tariff.</summary>
+    public List<Meter> MetersWithoutTariff { get; private set; } = [];
+    public const int AllMetersWithoutTariff = -1, AllActiveMeters = -2;
     public DateOnly PreviewInvoiceDate { get; private set; }
     public DateOnly Today => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(time.GetUtcNow(), TimeZoneInfo.Local).DateTime);
     public bool TestClockActive => time is OffsetTimeProvider;
@@ -56,6 +61,24 @@ public class IndexModel(ApplicationDbContext db, BillingRunService billing, Time
             if (status != invoice.Status) invoice.Status = status;
         }
         if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync();
+        await LoadChecksAsync();
+    }
+
+    async Task LoadChecksAsync()
+    {
+        FutureReadings = await ClockCheck.FutureReadingsAsync(db, time.GetUtcNow());
+        var waterEnabled = await db.SystemFeatureConfigurations.AsNoTracking().AnyAsync(x => x.Id == 1 && x.WaterBillingEnabled);
+        var priced = (await db.Tariffs.AsNoTracking().Where(x => x.MeterId != null).Select(x => x.MeterId!.Value).ToListAsync()).ToHashSet();
+        MetersWithoutTariff = Meters.Where(x => x.Active && (waterEnabled || x.UtilityType != UtilityType.Water) && !priced.Contains(x.Id)).OrderBy(x => x.Name).ToList();
+    }
+
+    /// <summary>Rejects readings dated after now. They stay in the database but are never billed.</summary>
+    public async Task<IActionResult> OnPostRejectFutureReadings()
+    {
+        if (!await Has(Permissions.RunBilling)) return Forbid();
+        var count = await ClockCheck.RejectFutureReadingsAsync(db, time.GetUtcNow(), UserName("Administrator"), SourceIp());
+        TempData["BillingSuccess"] = count == 0 ? "No readings are dated in the future." : $"{count} reading(s) dated in the future were rejected. They are kept in the history but never billed.";
+        return RedirectToPage(null, null, "tariffs");
     }
 
     public async Task<IActionResult> OnPostTariff(int meterId, decimal price, string currency, string reason)
@@ -82,20 +105,40 @@ public class IndexModel(ApplicationDbContext db, BillingRunService billing, Time
         currency = (currency ?? "").Trim().ToUpperInvariant();
         if (!ValidCurrency(currency)) return BillingError("Select a valid currency.");
         if (ScheduleError(cycleStartDay, publishDelayDays, dueDays) is string error) return BillingError(error);
-        var meter = await db.Meters.FindAsync(meterId);
-        if (meter is null) return BillingError("Select a valid meter.");
+        List<Meter> targets;
+        if (meterId is AllMetersWithoutTariff or AllActiveMeters)
+        {
+            var priced = (await db.Tariffs.Where(x => x.MeterId != null).Select(x => x.MeterId!.Value).ToListAsync()).ToHashSet();
+            targets = await db.Meters.Where(x => x.Active && x.CommunicationStatus != "Archived").OrderBy(x => x.Id).ToListAsync();
+            // Same meters the billing run uses: water meters only when water billing is switched on.
+            if (!await db.SystemFeatureConfigurations.AsNoTracking().AnyAsync(x => x.Id == 1 && x.WaterBillingEnabled))
+                targets = targets.Where(x => x.UtilityType != UtilityType.Water).ToList();
+            if (meterId == AllMetersWithoutTariff) targets = targets.Where(x => !priced.Contains(x.Id)).ToList();
+            if (targets.Count == 0) return BillingError(meterId == AllMetersWithoutTariff ? "Every active meter already has a tariff." : "There are no active meters.");
+        }
+        else
+        {
+            var meter = await db.Meters.FindAsync(meterId);
+            if (meter is null) return BillingError("Select a valid meter.");
+            targets = [meter];
+        }
         var user = UserName("Administrator");
         var auditReason = string.IsNullOrWhiteSpace(reason) ? "Settings updated" : reason.Trim();
-        var oldTariff = await db.Tariffs.Where(x => x.MeterId == meterId).OrderByDescending(x => x.Id).FirstOrDefaultAsync();
+        var targetIds = targets.Select(x => (int?)x.Id).ToList();
+        var oldTariffs = (await db.Tariffs.Where(x => targetIds.Contains(x.MeterId)).ToListAsync()).GroupBy(x => x.MeterId!.Value).ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.Id).First());
         await using var transaction = await db.Database.BeginTransactionAsync();
-        db.Tariffs.Add(new() { MeterId = meterId, PricePerKwh = price, Currency = currency, EffectiveFrom = time.GetLocalNow(), CreatedAt = time.GetUtcNow(), ChangedBy = user, Reason = auditReason });
         var schedule = await InvoiceSchedulerService.ReplaceScheduleAsync(db, time, cycleStartDay, publishDelayDays, dueDays, user);
-        db.AuditLogs.Add(Audit("Tariff and invoice schedule updated", "Meter", meterId.ToString(),
-            oldTariff is null ? "No tariff" : $"{oldTariff.Currency} {oldTariff.PricePerKwh}",
-            $"{currency} {price}; billing cycle {BillingCycle.Describe(cycleStartDay)}; publish {publishDelayDays} day(s) after period end; due after {dueDays} days; next run {schedule.GenerateAt:yyyy-MM-dd}", auditReason));
+        foreach (var meter in targets)
+        {
+            db.Tariffs.Add(new() { MeterId = meter.Id, PricePerKwh = price, Currency = currency, EffectiveFrom = time.GetLocalNow(), CreatedAt = time.GetUtcNow(), ChangedBy = user, Reason = auditReason });
+            db.AuditLogs.Add(Audit("Tariff and invoice schedule updated", "Meter", meter.Id.ToString(),
+                oldTariffs.TryGetValue(meter.Id, out var oldTariff) ? $"{oldTariff.Currency} {oldTariff.PricePerKwh}" : "No tariff",
+                $"{currency} {price}; billing cycle {BillingCycle.Describe(cycleStartDay)}; publish {publishDelayDays} day(s) after period end; due after {dueDays} days; next run {schedule.GenerateAt:yyyy-MM-dd}", auditReason));
+        }
         await db.SaveChangesAsync();
         await transaction.CommitAsync();
-        TempData["BillingSuccess"] = $"{meter.Name} tariff saved. Billing cycle: {BillingCycle.Describe(cycleStartDay)}. Next publication: {schedule.GenerateAt.ToLocalTime():dd MMM yyyy}.";
+        var who = targets.Count == 1 ? targets[0].Name : $"{targets.Count} meters";
+        TempData["BillingSuccess"] = $"{who}: tariff saved. Billing cycle: {BillingCycle.Describe(cycleStartDay)}. Next publication: {schedule.GenerateAt.ToLocalTime():dd MMM yyyy}.";
         return RedirectToPage(null, null, "tariffs");
     }
 
@@ -208,5 +251,5 @@ public class IndexModel(ApplicationDbContext db, BillingRunService billing, Time
     string SourceIp() => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "";
     AuditLog Audit(string action, string entityType, string entityId, string oldValue, string newValue, string reason) => new()
     { Timestamp = time.GetUtcNow(), UserId = UserName("Administrator"), Action = action, EntityType = entityType, EntityId = entityId, OldValue = oldValue, NewValue = newValue, Reason = reason, SourceIp = SourceIp() };
-    IActionResult BillingError(string message) { TempData["BillingError"] = message; return RedirectToPage(null, null, "billing"); }
+    IActionResult BillingError(string message) { TempData["BillingError"] = message; return RedirectToPage(null, null, "tariffs"); }
 }

@@ -39,7 +39,8 @@ public sealed class InvoiceSchedulerService(IServiceScopeFactory scopes, TimePro
         for (var guard = 0; guard < 24; guard++)
         {
             var now = time.GetUtcNow();
-            var due = schedules.Where(x => x.GenerateAt <= now && (x.LastAttemptAt is null || now - x.LastAttemptAt >= RetryInterval)).ToList();
+            // A last attempt "in the future" means the PC clock was moved forward and back again: retry now.
+            var due = schedules.Where(x => x.GenerateAt <= now && (x.LastAttemptAt is null || x.LastAttemptAt > now || now - x.LastAttemptAt >= RetryInterval)).ToList();
             if (due.Count == 0) return;
             var progressed = false;
             foreach (var schedule in due) progressed |= await RunAsync(db, billing, schedule, now, token);
