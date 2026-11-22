@@ -157,7 +157,7 @@ public sealed class BillingRunTests : IAsyncLifetime
         Assert.True(outcome.Created, outcome.Message);
         var invoice = Assert.Single(await Invoices());
         Assert.Equal(150, invoice.ConsumptionKwh);
-        Assert.Contains("reset", invoice.Notes);
+        Assert.Contains("counter was restarted on", invoice.Notes);
     }
 
     [Fact] public async Task UnfinishedPeriodIsRejectedButCanBePreviewed()

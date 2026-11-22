@@ -30,6 +30,8 @@ public class IndexModel(ApplicationDbContext db, BillingRunService billing, Time
     public List<MeterReading> FutureReadings { get; private set; } = [];
     /// <summary>Active meters that would stop the billing run because they have no tariff.</summary>
     public List<Meter> MetersWithoutTariff { get; private set; } = [];
+    /// <summary>Active meters whose serial number is still the generated placeholder; it would be printed on the invoice.</summary>
+    public List<Meter> MetersWithPlaceholderSerial { get; private set; } = [];
     public const int AllMetersWithoutTariff = -1, AllActiveMeters = -2;
     public DateOnly PreviewInvoiceDate { get; private set; }
     public DateOnly Today => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(time.GetUtcNow(), TimeZoneInfo.Local).DateTime);
@@ -70,6 +72,7 @@ public class IndexModel(ApplicationDbContext db, BillingRunService billing, Time
         var waterEnabled = await db.SystemFeatureConfigurations.AsNoTracking().AnyAsync(x => x.Id == 1 && x.WaterBillingEnabled);
         var priced = (await db.Tariffs.AsNoTracking().Where(x => x.MeterId != null).Select(x => x.MeterId!.Value).ToListAsync()).ToHashSet();
         MetersWithoutTariff = Meters.Where(x => x.Active && (waterEnabled || x.UtilityType != UtilityType.Water) && !priced.Contains(x.Id)).OrderBy(x => x.Name).ToList();
+        MetersWithPlaceholderSerial = Meters.Where(x => x.Active && x.SerialNumber.StartsWith("PENDING-", StringComparison.OrdinalIgnoreCase)).OrderBy(x => x.Name).ToList();
     }
 
     /// <summary>Rejects readings dated after now. They stay in the database but are never billed.</summary>

@@ -39,7 +39,8 @@ public sealed class BacnetPollingService(IServiceScopeFactory scopes, IBacnetIpS
                     foreach (var c in controllers.OrderBy(x => next.GetValueOrDefault(x.Id)))
                     {
                         if (running.Count >= 8) break;
-                        if (running.ContainsKey(c.Id) || next.GetValueOrDefault(c.Id) > DateTimeOffset.UtcNow) continue;
+                        // A next-poll time beyond the longest interval means the PC clock was moved back: poll now.
+                        if (running.ContainsKey(c.Id) || !MeterPollingService.IsDue(next.TryGetValue(c.Id, out var nextAt) ? nextAt : null, DateTimeOffset.UtcNow)) continue;
                         next[c.Id] = DateTimeOffset.UtcNow.AddSeconds(c.PollingIntervalSeconds);
                         running[c.Id] = PollAsync(c.Id, ct);
                     }

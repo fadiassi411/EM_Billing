@@ -34,7 +34,8 @@ public sealed class AutomaticInvoiceEmailService(IServiceScopeFactory scopes, IL
             .Where(x => x.AutoEmailRequested && x.EmailSentAt == null && x.EmailAttemptCount < 5 &&
                         (x.Status == InvoiceStatus.Finalized || x.Status == InvoiceStatus.PartiallyPaid || x.Status == InvoiceStatus.Overdue))
             .OrderBy(x => x.Id).Take(100).ToListAsync(token);
-        var invoices = candidates.Where(x => x.EmailLastAttemptAt == null || x.EmailLastAttemptAt < retryBefore).Take(20).ToList();
+        // An attempt dated in the future (PC clock moved back) must not block the retry.
+        var invoices = candidates.Where(x => x.EmailLastAttemptAt == null || x.EmailLastAttemptAt < retryBefore || x.EmailLastAttemptAt > DateTimeOffset.UtcNow).Take(20).ToList();
 
         var sender = scope.ServiceProvider.GetRequiredService<InvoiceEmailService>();
         foreach (var invoice in invoices)
