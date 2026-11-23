@@ -85,6 +85,8 @@ public sealed class BillingRunTests : IAsyncLifetime
         await db.SaveChangesAsync();
         (meterId, shopId) = (meter.Id, shop.Id);
         db.Tariffs.Add(new Tariff { MeterId = meterId, PricePerKwh = .5m, Currency = "USD", EffectiveFrom = At(2026, 8, 1) });
+        // Most tests check automatic publishing; the approval tests turn approval on.
+        db.SystemFeatureConfigurations.Add(new SystemFeatureConfiguration { Id = 1, ApproveInvoicesBeforePublishing = false });
         await db.SaveChangesAsync();
     }
 
@@ -387,6 +389,119 @@ public sealed class BillingRunTests : IAsyncLifetime
     {
         await using var scope = provider.CreateAsyncScope();
         return await Db(scope).InvoiceSchedules.AsNoTracking().SingleAsync(x => !x.Completed);
+    }
+
+    [Fact] public async Task ANewMeterIsBilledFromItsFirstReadingNotFromZero()
+    {
+        // Installed on 5 October; its display (12,345 kWh, entered as Offset) is what it counted before Watchdog.
+        await Readings(Good(At(2026, 10, 5, 10), 12345), Good(At(2026, 10, 20), 12370), Good(At(2026, 10, 31, 23), 12400), Good(At(2026, 11, 30, 23), 12500));
+        Assert.True((await Run(D(2026, 10, 1), D(2026, 10, 31))).Created);
+        var first = Assert.Single(await Invoices());
+        Assert.Equal(12345, first.OpeningReading); Assert.Equal(12400, first.ClosingReading);
+        Assert.Equal(55, first.ConsumptionKwh); Assert.Equal(27.5m, first.Total);
+        Assert.Contains("First invoice for this meter", first.Notes);
+        // The next month continues from the closing reading as usual.
+        clock.SetUtcNow(At(2026, 12, 1, 1));
+        Assert.True((await Run(D(2026, 11, 1), D(2026, 11, 30))).Created);
+        var second = (await Invoices())[1];
+        Assert.Equal(12400, second.OpeningReading); Assert.Equal(100, second.ConsumptionKwh);
+        Assert.DoesNotContain("First invoice", second.Notes);
+    }
+
+    // ---- approval before publishing ----
+
+    async Task Approval(bool on)
+    {
+        await using var scope = provider.CreateAsyncScope();
+        (await Db(scope).SystemFeatureConfigurations.SingleAsync()).ApproveInvoicesBeforePublishing = on;
+        await Db(scope).SaveChangesAsync();
+    }
+
+    async Task<T> Billing<T>(Func<BillingRunService, Task<T>> action)
+    {
+        await using var scope = provider.CreateAsyncScope();
+        return await action(scope.ServiceProvider.GetRequiredService<BillingRunService>());
+    }
+
+    [Fact] public async Task WithApprovalTheScheduleCreatesDraftsThatArePublishedOnlyWhenApproved()
+    {
+        await Approval(true);
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            Db(scope).SmtpConfigurations.Add(new SmtpConfiguration { Enabled = true, AutoSendPublishedInvoices = true });
+            await Db(scope).SaveChangesAsync();
+        }
+        clock.SetUtcNow(At(2026, 12, 1, 1));
+        await Readings(Good(At(2026, 10, 31, 23), 1000), Good(At(2026, 11, 30, 23), 1100));
+        await AddSchedule(1, 0, D(2026, 12, 1));
+        await Scheduler().RunDueSchedulesAsync();
+        var draft = Assert.Single(await Invoices());
+        Assert.Equal(InvoiceStatus.Draft, draft.Status); Assert.False(draft.Locked); Assert.False(draft.AutoEmailRequested); // nothing reaches the tenant
+        Assert.Equal(100, draft.ConsumptionKwh);
+        Assert.Equal(BillingCycle.LocalTime(D(2027, 1, 1), BillingCycle.RunTime), (await Schedule()).GenerateAt); // the month is done, waiting for approval
+
+        Assert.Equal(1, await Billing(b => b.ApproveDraftsAsync(draft.BillingPeriodId, "admin", "127.0.0.1")));
+        var published = Assert.Single(await Invoices());
+        Assert.Equal(InvoiceStatus.Finalized, published.Status); Assert.True(published.Locked); Assert.True(published.AutoEmailRequested);
+        Assert.Equal(draft.InvoiceNumber, published.InvoiceNumber);
+        await using var check = provider.CreateAsyncScope();
+        Assert.Equal(BillingStatus.Finalized, (await Db(check).BillingPeriods.SingleAsync()).Status);
+        Assert.Equal(0, await Billing(b => b.ApproveDraftsAsync(draft.BillingPeriodId, "admin", "127.0.0.1"))); // approving twice does nothing
+    }
+
+    [Fact] public async Task ARejectedDraftWaitsUntilBillAgainAndTheOtherDraftsAreNotAffected()
+    {
+        await Approval(true);
+        await Readings(Good(At(2026, 9, 30, 23), 1000), Good(At(2026, 10, 31, 23), 1100));
+        var m2 = await AddMeter("M2", tariff: true);
+        await ReadingsFor(m2, Good(At(2026, 9, 30, 23), 500), Good(At(2026, 10, 31, 23), 900)); // a wrong value the reviewer spots
+        var outcome = await Billing(b => b.GenerateAsync(new BillingRunRequest(D(2026, 10, 1), D(2026, 10, 31), D(2026, 11, 1), D(2026, 11, 11), Publish: false)));
+        Assert.Equal(2, outcome.InvoiceCount);
+        var wrong = (await Invoices()).Single(x => x.MeterId == m2);
+        Assert.Equal(400, wrong.ConsumptionKwh); // 500 -> 900: the reviewer knows the meter shows 560
+
+        Assert.True(await Billing(b => b.RejectDraftAsync(wrong.Id, "admin", "spike from a bad reading", "127.0.0.1")));
+        Assert.Equal(meterId, Assert.Single(await Invoices()).MeterId); // M1's draft is untouched
+        var held = Assert.Single(await Waiting());
+        Assert.True(held.OnHold); Assert.Contains("rejected", held.Reason);
+        Assert.False((await BillWaiting()).Created); // on hold: the automatic retry does not bill it again
+
+        await using (var scope = provider.CreateAsyncScope()) // the fix: the bad reading is rejected and the real value recorded
+        {
+            (await Db(scope).MeterReadings.SingleAsync(x => x.MeterId == m2 && x.AccumulatedKwh == 900)).Quality = BillingRunService.RejectedQuality;
+            Db(scope).MeterReadings.Add(new MeterReading { MeterId = m2, AccumulatedKwh = 560, Timestamp = At(2026, 10, 31, 23, 30), Quality = "Good" });
+            await Db(scope).SaveChangesAsync();
+        }
+        var again = await Billing(b => b.BillAgainAsync(held.Id, "admin", "127.0.0.1"));
+        Assert.True(again.Created, again.Message);
+        var redo = (await Invoices()).Single(x => x.MeterId == m2);
+        Assert.Equal(60, redo.ConsumptionKwh); Assert.Equal(InvoiceStatus.Draft, redo.Status);
+        Assert.NotEqual(wrong.InvoiceNumber, redo.InvoiceNumber); // a rejected number is never reused
+        Assert.Equal(wrong.BillingPeriodId, redo.BillingPeriodId);
+        Assert.Empty(await Waiting());
+    }
+
+    [Fact] public async Task RejectingADraftThatIncludedAnEarlierMonthKeepsThatMonthWaiting()
+    {
+        await Readings(Good(At(2026, 9, 30, 23), 1000), Good(At(2026, 10, 31, 23), 1100), Good(At(2026, 11, 30, 23), 1200));
+        var m2 = await AddMeter("M2", tariff: false);
+        await ReadingsFor(m2, Good(At(2026, 9, 30, 23), 500), Good(At(2026, 10, 31, 23), 560), Good(At(2026, 11, 30, 23), 600));
+        Assert.Equal(1, (await Run(D(2026, 10, 1), D(2026, 10, 31))).WaitingCount); // October: M2 has no tariff
+        await AddTariff(m2, 2m, At(2026, 11, 20));
+        await Approval(true);
+        clock.SetUtcNow(At(2026, 12, 1, 1));
+        await Billing(b => b.GenerateAsync(new BillingRunRequest(D(2026, 11, 1), D(2026, 11, 30), D(2026, 12, 1), D(2026, 12, 11), Publish: false)));
+        var draft = (await Invoices()).Single(x => x.MeterId == m2);
+        Assert.Equal(100, draft.ConsumptionKwh); // October + November
+        Assert.Empty(await Waiting());
+
+        Assert.True(await Billing(b => b.RejectDraftAsync(draft.Id, "admin", "check tariff", "127.0.0.1")));
+        Assert.Equal(2, (await Waiting()).Count(x => x.OnHold)); // October and November both wait again
+        var held = (await Waiting()).First();
+        Assert.True((await Billing(b => b.BillAgainAsync(held.Id, "admin", "127.0.0.1"))).Created);
+        var redo = (await Invoices()).Single(x => x.MeterId == m2);
+        Assert.Equal(100, redo.ConsumptionKwh); // still nothing lost, nothing twice
+        Assert.Empty(await Waiting());
     }
 
     [Fact] public async Task ScheduleBillsTheOtherMetersAndRetriesTheWaitingOne()

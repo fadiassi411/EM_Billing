@@ -535,7 +535,8 @@ namespace MallEnergyBilling.Web.Data.Migrations
                     b.HasIndex("ControllerId");
 
                     b.HasIndex("SerialNumber")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"SerialNumber\" <> ''");
 
                     b.HasIndex("ShopId");
 
@@ -654,6 +655,9 @@ namespace MallEnergyBilling.Web.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<int>("MeterId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("OnHold")
                         .HasColumnType("INTEGER");
 
                     b.Property<decimal>("OtherCharge")
@@ -806,6 +810,9 @@ namespace MallEnergyBilling.Web.Data.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("ApproveInvoicesBeforePublishing")
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTimeOffset>("UpdatedAt")

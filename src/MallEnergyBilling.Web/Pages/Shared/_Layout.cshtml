@@ -128,7 +128,7 @@
                     <a class="login-link" asp-area="Identity" asp-page="/Account/Login">Sign in</a>
                 }
             </header>
-            <main>@RenderBody()</main>
+            <main>@if(signedIn && Can(Permissions.RunBilling) && await Features.DraftInvoiceCountAsync() is var draftCount && draftCount > 0){<div class="alert-warning approval-banner"><b>@draftCount invoice(s) are waiting for your approval.</b> They are not published or emailed until you approve them. <a asp-page="/Operations/Index" asp-fragment="approval">Review and approve</a></div>}@RenderBody()</main>
             <footer class="app-footer">
                 <span>Watchdog Energy Management · Watch Every Watt</span>
                 <small class="watermark">MicroBrain by Fadi Assi</small>
