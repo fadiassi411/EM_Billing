@@ -68,8 +68,10 @@ public sealed class InvoiceSchedulerService(IServiceScopeFactory scopes, TimePro
         var runDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(schedule.GenerateAt, TimeZoneInfo.Local).DateTime);
         var cycleStart = BillingCycle.CycleStartForRun(runDate, schedule.PublishDelayDays);
         var (periodStart, periodEnd) = BillingCycle.PeriodEndingBefore(cycleStart);
+        // With approval on (the default) the invoices are created as drafts and published only when a user approves them.
+        var publish = !await billing.ApprovalRequiredAsync(token);
         var outcome = await billing.GenerateAsync(new BillingRunRequest(periodStart, periodEnd, runDate, runDate.AddDays(schedule.DueDays),
-            Publish: true, User: schedule.CreatedBy, Reason: "Automatic monthly billing"), token);
+            Publish: publish, User: schedule.CreatedBy, Reason: "Automatic monthly billing"), token);
         db.ChangeTracker.Clear();
         db.Attach(schedule);
 

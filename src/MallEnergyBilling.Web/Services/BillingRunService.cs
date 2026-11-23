@@ -136,10 +136,19 @@ public sealed class BillingRunService(ApplicationDbContext db, BillingCalculator
         if (endExclusive - closing.Timestamp > ClosingStaleWarning && meter.Controller?.CommunicationType != "BacnetIp")
             warnings.Add($"{meter.Name}: the last reading in the period is from {closing.Timestamp.ToLocalTime():dd MMM yyyy HH:mm}; usage after it will be billed next period.");
 
+        // A new meter (no reading before the period) is billed from its first reading in Watchdog, never from 0:
+        // what the counter held before (for example the meter display entered as Offset) is not usage of this period.
+        // An initial reading entered explicitly (above 0) is still used as the starting value.
+        var first = opening is null && meter.InitialReading <= 0 ? usable.First(x => x.Timestamp >= start) : null;
+        var startValue = opening?.Value ?? first?.Value ?? meter.InitialReading;
+        var startAt = opening?.Timestamp ?? first?.Timestamp;
+        var startId = opening?.Id ?? first?.Id;
+
         // Walk the period readings so a meter reset/replacement (baseline reading) is billed correctly.
-        var previous = opening?.Value ?? meter.InitialReading; var consumption = 0m; var resets = new List<DateTimeOffset>();
+        var previous = startValue; var consumption = 0m; var resets = new List<DateTimeOffset>();
         foreach (var row in usable.Where(x => x.Timestamp >= start))
         {
+            if (row == first) continue; // the starting value itself
             if (row.Quality == BaselineQuality) { previous = row.Value; resets.Add(row.Timestamp); continue; }
             if (row.Value < previous) return (null, $"reading fell from {previous:N3} to {row.Value:N3} on {row.Timestamp.ToLocalTime():dd MMM yyyy HH:mm} without a review");
             consumption += row.Value - previous; previous = row.Value;
@@ -163,17 +172,19 @@ public sealed class BillingRunService(ApplicationDbContext db, BillingCalculator
         BillingResult result;
         try
         {
-            result = calculator.Calculate(new(opening?.Value ?? meter.InitialReading, closing.Value, tariff.PricePerKwh,
+            result = calculator.Calculate(new(startValue, closing.Value, tariff.PricePerKwh,
                 request.FixedCharge, request.OtherCharge, request.TaxPercent, request.Discount, previousBalance, consumption));
         }
         catch (InvalidOperationException ex) { return (null, ex.Message); }
         var notes = new List<string>();
+        if (first is not null)
+            notes.Add($"First invoice for this meter: usage is measured from its first reading on {first.Timestamp.ToLocalTime():dd MMM yyyy HH:mm} ({first.Value:N3}).");
         if (from < periodStart)
             notes.Add($"This invoice also includes the usage from {from:dd MMM yyyy} to {periodStart.AddDays(-1):dd MMM yyyy}, which could not be billed at that time.");
         if (resets.Count > 0)
             notes.Add($"The meter counter was restarted {(resets.Count == 1 ? "on" : $"{resets.Count} times, from")} {resets[0].ToLocalTime():dd MMM yyyy HH:mm}{(resets.Count == 1 ? "" : $" to {resets[^1].ToLocalTime():dd MMM yyyy HH:mm}")} (meter replaced or its settings changed). Consumption is the usage measured before and after the restart, so it is not simply current minus previous reading.");
-        return (new(meter.Id, meter.Name, meter.Shop?.Name ?? "", meter.Unit, opening?.Value ?? meter.InitialReading, closing.Value,
-            opening?.Timestamp, closing.Timestamp, tariff.PricePerKwh, tariff.Currency, previousBalance, result, opening?.Id, closing.Id, string.Join(" ", notes), from), null);
+        return (new(meter.Id, meter.Name, meter.Shop?.Name ?? "", meter.Unit, startValue, closing.Value,
+            startAt, closing.Timestamp, tariff.PricePerKwh, tariff.Currency, previousBalance, result, startId, closing.Id, string.Join(" ", notes), from), null);
     }
 
     /// <summary>
@@ -247,12 +258,14 @@ public sealed class BillingRunService(ApplicationDbContext db, BillingCalculator
         var meters = (await BillableMetersAsync(open.Select(x => x.MeterId).Distinct().ToList(), ct)).ToDictionary(x => x.Id);
         var data = await LoadAsync(meters.Keys.ToList(), ct);
         var autoEmail = await db.SmtpConfigurations.AsNoTracking().AnyAsync(x => x.Enabled && x.AutoSendPublishedInvoices, ct);
+        var approval = await ApprovalRequiredAsync(ct);
         var next = await NextInvoiceNumberAsync(ct);
         var created = new List<Invoice>(); var stillWaiting = 0;
         foreach (var group in open.GroupBy(x => x.MeterId))
         {
             var items = group.OrderBy(x => x.BillingPeriod!.StartDate).ToList();
             var latest = items[^1]; var period = latest.BillingPeriod!;
+            if (items.Any(x => x.OnHold)) { stillWaiting++; continue; } // a rejected draft waits for Bill again
             void Wait(string reason) { foreach (var item in items) { item.Reason = reason; item.LastCheckedAt = now; } stillWaiting++; }
             if (!meters.TryGetValue(group.Key, out var meter)) { Wait("the meter is not active (or water billing is off). Activate it to bill it, or choose Do not bill."); continue; }
             if (data.PriorInvoices.Any(x => x.MeterId == meter.Id && x.BillingPeriod is { } p && p.StartDate >= period.StartDate))
@@ -262,7 +275,7 @@ public sealed class BillingRunService(ApplicationDbContext db, BillingCalculator
                 latest.FixedCharge, latest.OtherCharge, latest.TaxPercent, latest.Discount);
             var (line, problem) = Evaluate(meter, items[0].BillingPeriod!.StartDate, period.StartDate, period.EndDate, now, request, data, warnings); // a tariff set "from now" counts
             if (line is null) { Wait(problem!); continue; }
-            var publish = period.Status is BillingStatus.Finalized or BillingStatus.Closed;
+            var publish = !approval && period.Status is BillingStatus.Finalized or BillingStatus.Closed;
             var invoice = (await AddInvoicesAsync([line], period, request, BillingCycle.LocalStart(today), BillingCycle.LocalStart(request.DueDate), publish, publish && autoEmail, next++, now, ct))[0];
             created.Add(invoice);
             foreach (var item in items) { item.ResolvedAt = now; item.LastCheckedAt = now; item.Resolution = $"Billed on {invoice.InvoiceNumber}"; }
@@ -300,7 +313,7 @@ public sealed class BillingRunService(ApplicationDbContext db, BillingCalculator
                 PreviousBalance = line.PreviousBalance, Total = line.Result.Total, Currency = line.Currency,
                 Status = publish ? InvoiceStatus.Finalized : InvoiceStatus.Draft, Locked = publish,
                 AutoEmailRequested = autoEmail, Notes = line.Note,
-                SnapshotJson = JsonSerializer.Serialize(new { PeriodStart = line.CoversFrom, PeriodEnd = period.EndDate, Tariff = line.TariffPerUnit, line.Currency, line.OpeningAt, line.ClosingAt, line.Note })
+                SnapshotJson = JsonSerializer.Serialize(new { PeriodStart = line.CoversFrom, PeriodEnd = period.EndDate, Tariff = line.TariffPerUnit, line.Currency, line.OpeningAt, line.ClosingAt, line.Note, request.TaxPercent })
             };
             db.Invoices.Add(invoice);
             invoices.Add(invoice);
@@ -313,6 +326,87 @@ public sealed class BillingRunService(ApplicationDbContext db, BillingCalculator
             item.ResolvedAt = now; item.LastCheckedAt = now; item.Resolution = $"Included in {invoice.InvoiceNumber} ({period.Number})";
         }
         return invoices;
+    }
+
+    /// <summary>True (the default) when invoices are created as drafts and published only after a user approves them.</summary>
+    public async Task<bool> ApprovalRequiredAsync(CancellationToken ct = default) =>
+        !await db.SystemFeatureConfigurations.AsNoTracking().AnyAsync(x => x.Id == 1 && !x.ApproveInvoicesBeforePublishing, ct);
+
+    /// <summary>Publishes every draft invoice of the period: locked, archived as PDF and, if automatic email is on, emailed.</summary>
+    public async Task<int> ApproveDraftsAsync(int periodId, string user, string sourceIp, CancellationToken ct = default)
+    {
+        var drafts = await db.Invoices.Where(x => x.BillingPeriodId == periodId && x.Status == InvoiceStatus.Draft).OrderBy(x => x.Id).ToListAsync(ct);
+        var period = await db.BillingPeriods.FirstOrDefaultAsync(x => x.Id == periodId, ct);
+        if (drafts.Count == 0 || period is null) return 0;
+        var now = time.GetUtcNow();
+        var autoEmail = await db.SmtpConfigurations.AsNoTracking().AnyAsync(x => x.Enabled && x.AutoSendPublishedInvoices, ct);
+        foreach (var invoice in drafts) { invoice.Status = InvoiceStatus.Finalized; invoice.Locked = true; invoice.AutoEmailRequested = autoEmail; }
+        if (period.Status is not (BillingStatus.Finalized or BillingStatus.Closed)) { period.Status = BillingStatus.Finalized; period.FinalizedAt = now; }
+        db.AuditLogs.Add(new AuditLog
+        {
+            Timestamp = now, UserId = user, Action = "Invoices approved and published", EntityType = "BillingPeriod", EntityId = period.Id.ToString(),
+            NewValue = $"{drafts.Count} invoice(s) of {period.Number} published: {string.Join(", ", drafts.Select(x => x.InvoiceNumber))}; automatic email={autoEmail}",
+            Reason = "Approved after review", SourceIp = sourceIp
+        });
+        await db.SaveChangesAsync(ct);
+        return drafts.Count;
+    }
+
+    /// <summary>
+    /// Removes a wrong draft invoice. Its meter goes back to Meters waiting to be billed, on hold, so it is
+    /// billed again only after the problem is fixed and a user presses Bill again. Its invoice number is never reused.
+    /// </summary>
+    public async Task<bool> RejectDraftAsync(int invoiceId, string user, string reason, string sourceIp, CancellationToken ct = default)
+    {
+        var invoice = await db.Invoices.Include(x => x.Meter).Include(x => x.BillingPeriod).FirstOrDefaultAsync(x => x.Id == invoiceId && x.Status == InvoiceStatus.Draft, ct);
+        if (invoice is null) return false;
+        var now = time.GetUtcNow();
+        var number = invoice.InvoiceNumber;
+        var note = $"Draft {number} rejected by {user}: {reason}. Fix the problem, then press Bill again.";
+        // Months whose usage was included in this draft wait again too.
+        var included = (await db.PendingMeterBills.Where(x => x.MeterId == invoice.MeterId && x.ResolvedAt != null).ToListAsync(ct))
+            .Where(x => x.Resolution == $"Billed on {number}" || x.Resolution.StartsWith($"Included in {number} (", StringComparison.Ordinal)).ToList();
+        foreach (var item in included) { item.ResolvedAt = null; item.Resolution = ""; item.OnHold = true; item.Reason = note; item.LastCheckedAt = now; }
+        if (!included.Any(x => x.BillingPeriodId == invoice.BillingPeriodId))
+        {
+            var taxable = invoice.EnergyCharge + invoice.FixedCharges + invoice.OtherCharges;
+            db.PendingMeterBills.Add(new PendingMeterBill
+            {
+                BillingPeriodId = invoice.BillingPeriodId, MeterId = invoice.MeterId, Reason = note, CreatedAt = now, LastCheckedAt = now, OnHold = true,
+                FixedCharge = invoice.FixedCharges, OtherCharge = invoice.OtherCharges, Discount = invoice.Discount,
+                TaxPercent = SnapshotTaxPercent(invoice.SnapshotJson) ?? (taxable == 0 ? 0 : decimal.Round(invoice.Tax * 100m / taxable, 4)),
+                DueDays = Math.Max(0, (invoice.DueDate - invoice.InvoiceDate).Days)
+            });
+        }
+        db.Invoices.Remove(invoice);
+        db.AuditLogs.Add(new AuditLog
+        {
+            Timestamp = now, UserId = user, Action = "Draft invoice rejected", EntityType = "Invoice", EntityId = invoiceId.ToString(),
+            OldValue = $"{number}; {invoice.Meter?.Name}; {invoice.BillingPeriod?.Number}; {invoice.ConsumptionKwh:N3} x {invoice.TariffPerKwh} = {invoice.Total:N2} {invoice.Currency}",
+            NewValue = "Deleted; meter waiting to be billed again", Reason = reason, SourceIp = sourceIp
+        });
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    static decimal? SnapshotTaxPercent(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json);
+            return doc.RootElement.TryGetProperty("TaxPercent", out var v) && v.TryGetDecimal(out var d) ? d : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    /// <summary>Releases a rejected draft's meter so it is billed again now (as a draft when approval is on).</summary>
+    public async Task<BillingRunOutcome> BillAgainAsync(int pendingId, string user, string sourceIp, CancellationToken ct = default)
+    {
+        var item = await db.PendingMeterBills.FirstOrDefaultAsync(x => x.Id == pendingId && x.ResolvedAt == null, ct);
+        if (item is null) return new(false, false, "That waiting meter was not found; it may already be billed.");
+        foreach (var held in await db.PendingMeterBills.Where(x => x.MeterId == item.MeterId && x.ResolvedAt == null && x.OnHold).ToListAsync(ct)) held.OnHold = false;
+        await db.SaveChangesAsync(ct);
+        return await BillWaitingMetersAsync(user, sourceIp, ct);
     }
 
     /// <summary>Marks a waiting meter as not to be billed for that period. Its usage for the period is then never billed.</summary>

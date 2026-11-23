@@ -30,7 +30,8 @@ public sealed class MeterModel(ApplicationDbContext db, LicenseService licenses,
     {
         public int Id { get; set; }
         [Required] public string Name { get; set; } = "";
-        [Required] public string SerialNumber { get; set; } = "";
+        /// <summary>Optional. When entered it must be unique.</summary>
+        public string? SerialNumber { get; set; } = "";
         [Range(1, int.MaxValue)] public int ShopId { get; set; }
         public UtilityType UtilityType { get; set; } = UtilityType.Electricity;
         public PowerSource PowerSource { get; set; } = PowerSource.Grid;
@@ -104,7 +105,9 @@ public sealed class MeterModel(ApplicationDbContext db, LicenseService licenses,
             secondary = MBusProtocol.NormalizeSecondaryAddress(Input.MBusSecondaryAddress) ?? "";
         }
         if (!ModelState.IsValid) return Page();
-        if (await db.Meters.AnyAsync(x => x.Id != m.Id && x.SerialNumber == Input.SerialNumber)) { ModelState.AddModelError("Input.SerialNumber", "Meter serial number must be unique."); return Page(); }
+        Input.SerialNumber = (Input.SerialNumber ?? "").Trim();
+        if (Input.SerialNumber.Length > 0 && await db.Meters.FirstOrDefaultAsync(x => x.Id != m.Id && x.SerialNumber == Input.SerialNumber) is { } owner)
+        { ModelState.AddModelError("Input.SerialNumber", $"Serial number {Input.SerialNumber} is already used by meter {owner.Name}. Leave it empty if the meter has no serial."); return Page(); }
         var duplicate = ControllerCommunicationType switch
         {
             "BacnetIp" => false,
@@ -132,7 +135,7 @@ public sealed class MeterModel(ApplicationDbContext db, LicenseService licenses,
             || m.MBusSecondaryAddress != secondary || m.MBusRecord != Input.MBusRecord || m.Offset != Input.Offset
             || IsMBus && m.UtilityType != Input.UtilityType; // energy vs volume record
         var old = JsonSerializer.Serialize(m);
-        m.Name = Input.Name.Trim(); m.SerialNumber = Input.SerialNumber.Trim(); m.ShopId = Input.ShopId; m.UtilityType = Input.UtilityType; m.PowerSource = Input.PowerSource; m.Active = Input.Active;
+        m.Name = Input.Name.Trim(); m.SerialNumber = Input.SerialNumber; m.ShopId = Input.ShopId; m.UtilityType = Input.UtilityType; m.PowerSource = Input.PowerSource; m.Active = Input.Active;
         // A new register, address or scale must not be billed as a jump.
         if (measurementChanged && await db.MeterReadings.AnyAsync(x => x.MeterId == m.Id)) m.RebaseOnNextReading = true;
         m.StartingRegister = Input.StartingRegister; m.BacnetObjectType = Input.BacnetObjectType; m.BacnetObjectInstance = Input.BacnetObjectInstance; m.DataType = Input.DataType; m.WordOrder = Input.WordOrder;

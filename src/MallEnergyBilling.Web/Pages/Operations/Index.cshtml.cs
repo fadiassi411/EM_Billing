@@ -32,8 +32,10 @@ public class IndexModel(ApplicationDbContext db, BillingRunService billing, Time
     public List<Meter> MetersWithoutTariff { get; private set; } = [];
     /// <summary>Meters that could not be billed for a period yet. The other meters of that period were billed.</summary>
     public List<PendingMeterBill> WaitingMeters { get; private set; } = [];
-    /// <summary>Active meters whose serial number is still the generated placeholder; it would be printed on the invoice.</summary>
-    public List<Meter> MetersWithPlaceholderSerial { get; private set; } = [];
+    /// <summary>Draft invoices waiting for approval, oldest period first.</summary>
+    public List<Invoice> Drafts { get; private set; } = [];
+    /// <summary>Monthly invoices are created as drafts and published only after approval.</summary>
+    public bool ApprovalRequired { get; private set; } = true;
     public const int AllMetersWithoutTariff = -1, AllActiveMeters = -2;
     public DateOnly PreviewInvoiceDate { get; private set; }
     public DateOnly Today => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(time.GetUtcNow(), TimeZoneInfo.Local).DateTime);
@@ -74,9 +76,11 @@ public class IndexModel(ApplicationDbContext db, BillingRunService billing, Time
         var waterEnabled = await db.SystemFeatureConfigurations.AsNoTracking().AnyAsync(x => x.Id == 1 && x.WaterBillingEnabled);
         var priced = (await db.Tariffs.AsNoTracking().Where(x => x.MeterId != null).Select(x => x.MeterId!.Value).ToListAsync()).ToHashSet();
         MetersWithoutTariff = Meters.Where(x => x.Active && (waterEnabled || x.UtilityType != UtilityType.Water) && !priced.Contains(x.Id)).OrderBy(x => x.Name).ToList();
+        ApprovalRequired = await billing.ApprovalRequiredAsync();
+        Drafts = (await db.Invoices.AsNoTracking().Include(x => x.Meter).Include(x => x.Shop).Include(x => x.BillingPeriod).Where(x => x.Status == InvoiceStatus.Draft).ToListAsync())
+            .OrderBy(x => x.BillingPeriod!.StartDate).ThenBy(x => x.Shop!.ShopNumber).ThenBy(x => x.Meter!.Name).ToList();
         WaitingMeters = (await db.PendingMeterBills.AsNoTracking().Include(x => x.Meter).ThenInclude(x => x!.Shop).Include(x => x.BillingPeriod).Where(x => x.ResolvedAt == null).ToListAsync())
             .OrderBy(x => x.BillingPeriod!.StartDate).ThenBy(x => x.Meter!.Name).ToList();
-        MetersWithPlaceholderSerial = Meters.Where(x => x.Active && x.SerialNumber.StartsWith("PENDING-", StringComparison.OrdinalIgnoreCase)).OrderBy(x => x.Name).ToList();
     }
 
     /// <summary>Rejects readings dated after now. They stay in the database but are never billed.</summary>
@@ -211,6 +215,48 @@ public class IndexModel(ApplicationDbContext db, BillingRunService billing, Time
         if (string.IsNullOrWhiteSpace(reason)) { TempData["BillingError"] = "Enter the reason why this meter is not billed."; return RedirectToPage(null, null, "tariffs"); }
         var done = await billing.DismissWaitingAsync(id, UserName("Administrator"), reason.Trim(), SourceIp(), HttpContext.RequestAborted);
         TempData[done ? "BillingSuccess" : "BillingError"] = done ? "The meter will not be billed for that period." : "That waiting meter was not found; it may already be billed.";
+        return RedirectToPage(null, null, "tariffs");
+    }
+
+    /// <summary>Publishes all draft invoices of a billing period after review.</summary>
+    public async Task<IActionResult> OnPostApproveDrafts(int periodId)
+    {
+        if (!await Has(Permissions.RunBilling)) return Forbid();
+        var count = await billing.ApproveDraftsAsync(periodId, UserName("Administrator"), SourceIp(), HttpContext.RequestAborted);
+        TempData[count > 0 ? "BillingSuccess" : "BillingError"] = count > 0 ? $"{count} invoice(s) approved and published. They are saved as PDF and, if automatic email is on, emailed." : "There were no draft invoices to approve.";
+        return RedirectToPage(null, null, "tariffs");
+    }
+
+    /// <summary>Deletes a wrong draft; its meter waits (on hold) until the problem is fixed and Bill again is pressed.</summary>
+    public async Task<IActionResult> OnPostRejectDraft(int invoiceId, string reason)
+    {
+        if (!await Has(Permissions.RunBilling)) return Forbid();
+        if (string.IsNullOrWhiteSpace(reason)) return BillingError("Enter the reason why the draft is wrong.");
+        var done = await billing.RejectDraftAsync(invoiceId, UserName("Administrator"), reason.Trim(), SourceIp(), HttpContext.RequestAborted);
+        TempData[done ? "BillingSuccess" : "BillingError"] = done ? "The draft was removed. Fix the problem, then press Bill again under Meters waiting to be billed." : "That draft was not found; it may already be approved or removed.";
+        return RedirectToPage(null, null, "tariffs");
+    }
+
+    /// <summary>Bills a meter whose draft was rejected again, after the problem was fixed.</summary>
+    public async Task<IActionResult> OnPostBillAgain(int id)
+    {
+        if (!await Has(Permissions.RunBilling)) return Forbid();
+        var outcome = await billing.BillAgainAsync(id, UserName("Administrator"), SourceIp(), HttpContext.RequestAborted);
+        TempData[outcome.Created ? "BillingSuccess" : "BillingError"] = outcome.Message;
+        return RedirectToPage(null, null, "tariffs");
+    }
+
+    /// <summary>Turns approval before publishing on or off.</summary>
+    public async Task<IActionResult> OnPostApprovalSetting(bool approve)
+    {
+        if (!await Has(Permissions.RunBilling)) return Forbid();
+        var settings = await db.SystemFeatureConfigurations.FirstOrDefaultAsync(x => x.Id == 1);
+        if (settings is null) { settings = new SystemFeatureConfiguration { Id = 1 }; db.SystemFeatureConfigurations.Add(settings); }
+        var previous = settings.ApproveInvoicesBeforePublishing;
+        settings.ApproveInvoicesBeforePublishing = approve; settings.UpdatedAt = time.GetUtcNow(); settings.UpdatedBy = UserName("Administrator");
+        db.AuditLogs.Add(Audit("Invoice approval setting changed", "SystemFeatureConfiguration", "1", $"Approve before publishing={previous}", $"Approve before publishing={approve}", "Billing publication setting"));
+        await db.SaveChangesAsync();
+        TempData["BillingSuccess"] = approve ? "Monthly invoices will be created as drafts and published only after you approve them." : "Monthly invoices will be published automatically, without approval.";
         return RedirectToPage(null, null, "tariffs");
     }
 
